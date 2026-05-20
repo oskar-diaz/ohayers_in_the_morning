@@ -1,0 +1,205 @@
+import Image from "next/image";
+import Link from "next/link";
+
+import { PortableText } from "@portabletext/react";
+
+import { client } from "@/sanity/lib/client";
+import { urlFor } from "@/sanity/lib/image";
+
+async function getPost(slug: string) {
+  return client.fetch(`
+    *[_type == "post" && slug.current == "${slug}"][0]{
+      title,
+      publishedAt,
+      excerpt,
+      body,
+      mainImage,
+      categories[]->{
+        title
+      },
+      author->{
+        name,
+        image
+      }
+    }
+  `);
+}
+
+export default async function PostPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+
+  const post = await getPost(slug);
+
+  if (!post) {
+    return (
+      <main className="p-10">
+        <h1>Post not found</h1>
+      </main>
+    );
+  }
+
+  return (
+    <main className="bg-[#f8f6f2] min-h-screen">
+      {/* TOP BAR */}
+      <div className="max-w-7xl mx-auto px-6">
+        <div className="flex justify-between items-center py-4 border-b newspaper-border text-sm">
+          <p>{new Date().toLocaleDateString()}</p>
+
+          <Link href="/">
+            <p className="uppercase tracking-[0.3em] text-xs hover:opacity-70 transition">
+              OHAYERS IN THE MORNING
+            </p>
+          </Link>
+
+          <p>Tokio 18°C</p>
+        </div>
+      </div>
+
+      {/* HERO IMAGE */}
+      {post.mainImage && (
+        <div className="relative aspect-[16/7] w-full overflow-hidden">
+          <Image
+            src={urlFor(post.mainImage).url()}
+            alt={post.title}
+            fill
+            priority
+            className="object-cover"
+          />
+        </div>
+      )}
+
+      {/* ARTICLE */}
+      <article className="max-w-5xl mx-auto px-6 py-16">
+        {/* CATEGORY */}
+        {post.categories?.[0] && (
+          <p className="uppercase text-red-700 font-semibold tracking-wide text-sm mb-5">
+            {post.categories[0].title}
+          </p>
+        )}
+
+        {/* TITLE */}
+        <h1 className="text-5xl md:text-7xl font-black leading-none newspaper-title">
+          {post.title}
+        </h1>
+
+        {/* EXCERPT */}
+        {post.excerpt && (
+          <p className="mt-10 text-2xl text-gray-700 leading-relaxed font-light max-w-4xl">
+            {post.excerpt}
+          </p>
+        )}
+
+        {/* META */}
+        <div className="flex items-center justify-between mt-12 pb-10 border-b newspaper-border">
+          {/* AUTHOR */}
+          <div className="flex items-center gap-4">
+            {post.author?.image && (
+              <div className="relative w-14 h-14 rounded-full overflow-hidden">
+                <Image
+                  src={urlFor(post.author.image).url()}
+                  alt={post.author.name}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+            )}
+
+            <div>
+              <p className="font-semibold text-lg">{post.author?.name}</p>
+
+              <p className="text-gray-500 text-sm">Redacción Ohayers</p>
+            </div>
+          </div>
+
+          {/* DATE */}
+          <div className="text-right">
+            <p className="text-gray-500">
+              {new Date(post.publishedAt).toLocaleDateString()}
+            </p>
+
+            <p className="text-gray-400 text-sm mt-1">4 min de lectura</p>
+          </div>
+        </div>
+
+        {/* BODY */}
+        <div className="mt-16 max-w-[850px] mx-auto">
+          <PortableText
+            value={post.body}
+            components={{
+              types: {
+                image: ({ value }) => (
+                  <figure className="md:float-right w-full md:w-[320px] md:ml-8 md:mb-4 my-8">
+                    <div className="relative overflow-hidden rounded-sm bg-[#ece8df]">
+                      <Image
+                        src={urlFor(value).url()}
+                        alt={value.alt || "Article image"}
+                        width={800}
+                        height={1200}
+                        className="w-full h-auto object-contain"
+                      />
+                    </div>
+
+                    {value.alt && (
+                      <figcaption className="text-xs text-gray-500 mt-2 italic leading-relaxed">
+                        {value.alt}
+                      </figcaption>
+                    )}
+                  </figure>
+                ),
+              },
+
+              block: {
+                h1: ({ children }) => (
+                  <h1 className="text-5xl font-black newspaper-title mt-16 mb-8 leading-none">
+                    {children}
+                  </h1>
+                ),
+
+                h2: ({ children }) => (
+                  <h2 className="text-4xl font-black newspaper-title mt-14 mb-6 leading-tight">
+                    {children}
+                  </h2>
+                ),
+
+                normal: ({ children }) => (
+                  <p className="text-[1.15rem] md:text-[1.3rem] leading-[2] text-[#222] mb-7 font-light">
+                    {children}
+                  </p>
+                ),
+
+                blockquote: ({ children }) => (
+                  <blockquote className="border-l-4 border-black pl-6 italic text-3xl leading-relaxed newspaper-title py-4 my-10">
+                    {children}
+                  </blockquote>
+                ),
+              },
+            }}
+          />
+
+          <div className="clear-both" />
+        </div>
+
+        {/* SHARE */}
+        <div className="mt-24 pt-10 border-t newspaper-border">
+          <div className="flex items-center justify-between">
+            <p className="uppercase tracking-widest text-sm text-gray-500">
+              Compartir noticia
+            </p>
+
+            <div className="flex gap-6 text-lg">
+              <button className="hover:opacity-60 transition">X</button>
+
+              <button className="hover:opacity-60 transition">Instagram</button>
+
+              <button className="hover:opacity-60 transition">TikTok</button>
+            </div>
+          </div>
+        </div>
+      </article>
+    </main>
+  );
+}
