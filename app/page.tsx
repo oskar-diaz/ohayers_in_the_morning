@@ -131,7 +131,18 @@ export default async function Home() {
             )}
 
             <Link href={`/post/${featured.slug.current}`}>
-              <h2 className="newspaper-title text-[clamp(2.5rem,5vw,5.5rem)] font-black leading-[0.9] hover:opacity-70 transition">
+              <h2
+                className="
+    newspaper-title
+    text-[clamp(2.2rem,4vw,4.5rem)]
+    font-black
+    leading-[0.92]
+    tracking-[-0.04em]
+    hover:opacity-70
+    transition
+    max-w-[11ch]
+  "
+              >
                 {featured.title}
               </h2>
             </Link>
