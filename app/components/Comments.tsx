@@ -1,9 +1,13 @@
 "use client";
 
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { FormEvent, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
+
+const ADMIN_EMAILS = new Set(["koki142@gmail.com"]);
+const EDIT_WINDOW_IN_MS = 15 * 60 * 1000;
 
 type CommentId = number | string;
 
@@ -83,8 +87,42 @@ export default function Comments({ slug }: { slug: string }) {
   const [text, setText] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [replyTo, setReplyTo] = useState<CommentRecord | null>(null);
+  const [editingComment, setEditingComment] = useState<CommentRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeCommentActionId, setActiveCommentActionId] = useState<CommentId | null>(
+    null,
+  );
+  const [commentPendingDelete, setCommentPendingDelete] =
+    useState<CommentRecord | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
+
+  function isGoogleUser() {
+    if (!user) {
+      return false;
+    }
+
+    const primaryProvider = user.app_metadata?.provider;
+    const providers = Array.isArray(user.app_metadata?.providers)
+      ? user.app_metadata.providers
+      : [];
+
+    return primaryProvider === "google" || providers.includes("google");
+  }
+
+  function isGoogleAdmin() {
+    return Boolean(user?.email && ADMIN_EMAILS.has(user.email) && isGoogleUser());
+  }
+
+  function isWithinEditWindow(comment: CommentRecord) {
+    const createdAt = new Date(comment.created_at).getTime();
+
+    if (Number.isNaN(createdAt)) {
+      return false;
+    }
+
+    return nowTimestamp - createdAt <= EDIT_WINDOW_IN_MS;
+  }
 
   async function loadComments() {
     const { data, error } = await supabase
@@ -148,6 +186,16 @@ export default function Comments({ slug }: { slug: string }) {
     };
   }, [slug]);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNowTimestamp(Date.now());
+    }, 60_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
   async function login() {
     window.localStorage.setItem("supabase-return-to", window.location.href);
 
@@ -167,7 +215,9 @@ export default function Comments({ slug }: { slug: string }) {
   }
 
   function startReply(comment: CommentRecord) {
+    setEditingComment(null);
     setReplyTo(comment);
+    setText("");
     document.getElementById("comment-form")?.scrollIntoView({
       behavior: "smooth",
       block: "start",
@@ -176,6 +226,26 @@ export default function Comments({ slug }: { slug: string }) {
 
   function cancelReply() {
     setReplyTo(null);
+  }
+
+  function startEdit(comment: CommentRecord) {
+    setReplyTo(null);
+    setEditingComment(comment);
+    setText(comment.content);
+
+    if (!user && comment.email) {
+      setGuestEmail(comment.email);
+    }
+
+    document.getElementById("comment-form")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+
+  function cancelEdit() {
+    setEditingComment(null);
+    setText("");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -214,11 +284,22 @@ export default function Comments({ slug }: { slug: string }) {
       parent_id: replyTo?.id || null,
     };
 
-    const { error } = await supabase.from("comments").insert(payload);
+    const operation = editingComment
+      ? supabase
+          .from("comments")
+          .update({
+            content: trimmedText,
+          })
+          .eq("id", editingComment.id)
+      : supabase.from("comments").insert(payload).select("id").single();
+
+    const { error } = await operation;
 
     if (error) {
       setErrorMessage(
-        "No he podido guardar el comentario. Revisa que la tabla `comments` tenga al menos `email` y `parent_id`.",
+        editingComment
+          ? "No he podido editar el comentario."
+          : "No he podido guardar el comentario. Revisa que la tabla `comments` tenga al menos `email` y `parent_id`.",
       );
       setIsSubmitting(false);
       return;
@@ -226,6 +307,7 @@ export default function Comments({ slug }: { slug: string }) {
 
     setText("");
     setReplyTo(null);
+    setEditingComment(null);
 
     if (!user) {
       setGuestEmail("");
@@ -235,11 +317,64 @@ export default function Comments({ slug }: { slug: string }) {
     setIsSubmitting(false);
   }
 
+  function canDeleteComment(comment: CommentRecord) {
+    if (!user?.email || !isGoogleUser()) {
+      return false;
+    }
+
+    if (isGoogleAdmin()) {
+      return true;
+    }
+
+    return comment.email === user.email;
+  }
+
+  function canEditComment(comment: CommentRecord) {
+    if (isGoogleAdmin()) {
+      return true;
+    }
+
+    return canDeleteComment(comment) && isWithinEditWindow(comment);
+  }
+
+  async function deleteComment(comment: CommentRecord) {
+    if (!canDeleteComment(comment)) {
+      setErrorMessage("No tienes permisos para borrar este comentario.");
+      return;
+    }
+
+    setActiveCommentActionId(comment.id);
+    setErrorMessage("");
+
+    const { error } = await supabase.from("comments").delete().eq("id", comment.id);
+
+    if (error) {
+      setErrorMessage("No he podido borrar el comentario.");
+      setActiveCommentActionId(null);
+      return;
+    }
+
+    if (editingComment?.id === comment.id) {
+      cancelEdit();
+    }
+
+    if (replyTo?.id === comment.id) {
+      cancelReply();
+    }
+
+    await loadComments();
+    setActiveCommentActionId(null);
+    setCommentPendingDelete(null);
+  }
+
   const tree = buildCommentTree(comments);
 
   function renderComment(comment: CommentNode, depth = 0) {
     const displayName = getDisplayName(comment);
     const avatarLabel = getInitials(displayName);
+    const canEdit = canEditComment(comment);
+    const canDelete = canDeleteComment(comment);
+    const isBusy = activeCommentActionId === comment.id;
 
     return (
       <div
@@ -271,13 +406,40 @@ export default function Comments({ slug }: { slug: string }) {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => startReply(comment)}
-              className="editorial-link-button shrink-0"
-            >
-              Responder
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => startReply(comment)}
+                className="editorial-link-button"
+              >
+                Responder
+              </button>
+
+              {(canEdit || canDelete) && (
+                <>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => startEdit(comment)}
+                      className="editorial-link-button"
+                    >
+                      Editar
+                    </button>
+                  )}
+
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={() => setCommentPendingDelete(comment)}
+                      disabled={isBusy}
+                      className="editorial-link-button disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isBusy ? "Borrando..." : "Borrar"}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
           <p className="mt-5 text-[1.03rem] leading-8 text-[#222] whitespace-pre-wrap">
@@ -299,6 +461,51 @@ export default function Comments({ slug }: { slug: string }) {
 
   return (
     <div className="mt-24">
+      <AlertDialog.Root
+        open={Boolean(commentPendingDelete)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCommentPendingDelete(null);
+          }
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[2px]" />
+
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[1.75rem] border border-[#d6d1c8] bg-[#fffdf8] px-6 py-6 shadow-[0_24px_60px_rgba(17,17,17,0.18)]">
+            <AlertDialog.Title className="text-2xl font-black newspaper-title text-[#111111]">
+              Borrar comentario
+            </AlertDialog.Title>
+
+            <AlertDialog.Description className="mt-3 text-[1rem] leading-7 text-[#4f4a44]">
+              Esta accion borrara tu comentario
+              {commentPendingDelete?.parent_id ? " y lo sacara del hilo." : "."}
+            </AlertDialog.Description>
+
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+              <AlertDialog.Cancel className="editorial-cta bg-transparent">
+                Cancelar
+              </AlertDialog.Cancel>
+
+              <AlertDialog.Action
+                className="editorial-cta editorial-cta-dark"
+                onClick={(event) => {
+                  event.preventDefault();
+
+                  if (!commentPendingDelete) {
+                    return;
+                  }
+
+                  void deleteComment(commentPendingDelete);
+                }}
+              >
+                Borrar
+              </AlertDialog.Action>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+
       <div className="mb-10 flex items-end justify-between gap-4 border-b border-[#d6d1c8] pb-5">
         <h3 className="text-4xl font-black newspaper-title">
           {comments.length === 0
@@ -326,7 +533,11 @@ export default function Comments({ slug }: { slug: string }) {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-xl font-semibold newspaper-title">
-              {replyTo ? "Responder comentario" : "Escribe un comentario"}
+              {editingComment
+                ? "Editar comentario"
+                : replyTo
+                  ? "Responder comentario"
+                  : "Escribe un comentario"}
             </p>
 
             <p className="mt-2 text-sm text-[#6a645c]">
@@ -377,7 +588,23 @@ export default function Comments({ slug }: { slug: string }) {
           )}
         </div>
 
-        {replyTo && (
+        {editingComment && (
+          <div className="mt-6 flex flex-wrap items-center gap-3 rounded-[1.4rem] border border-[#d6d1c8] bg-[#ece8df] px-4 py-3 text-sm text-[#4f4a44]">
+            <span>
+              Editando tu comentario
+            </span>
+
+            <button
+              type="button"
+              onClick={cancelEdit}
+              className="editorial-link-button !px-0 !py-0"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+
+        {replyTo && !editingComment && (
           <div className="mt-6 flex flex-wrap items-center gap-3 rounded-[1.4rem] border border-[#d6d1c8] bg-[#ece8df] px-4 py-3 text-sm text-[#4f4a44]">
             <span>
               Respondiendo a <strong>{getDisplayName(replyTo)}</strong>
@@ -410,7 +637,9 @@ export default function Comments({ slug }: { slug: string }) {
             value={text}
             onChange={(event) => setText(event.target.value)}
             placeholder={
-              replyTo
+              editingComment
+                ? "Edita tu comentario..."
+                : replyTo
                 ? "Escribe tu respuesta..."
                 : "Escribe un comentario..."
             }
@@ -432,7 +661,9 @@ export default function Comments({ slug }: { slug: string }) {
             >
               {isSubmitting
                 ? "Enviando..."
-                : replyTo
+                : editingComment
+                  ? "Guardar cambios"
+                  : replyTo
                   ? "Responder"
                   : "Comentar"}
             </button>
