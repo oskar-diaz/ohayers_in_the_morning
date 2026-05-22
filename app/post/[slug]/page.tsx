@@ -265,7 +265,7 @@ export default async function PostPage({
                 href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
                   post.title,
                 )}&url=${encodeURIComponent(
-                  `https://ohayers-in-the-morning.vercel.app/post/${slug}`,
+                  `${siteUrl}/post/${slug}`,
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"

@@ -149,10 +149,14 @@ export default function Comments({ slug }: { slug: string }) {
   }, [slug]);
 
   async function login() {
+    window.localStorage.setItem("supabase-return-to", window.location.href);
+
+    const redirectUrl = new URL("/", window.location.origin).toString();
+
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.href,
+        redirectTo: redirectUrl,
       },
     });
   }
@@ -298,7 +302,7 @@ export default function Comments({ slug }: { slug: string }) {
       <div className="mb-10 flex items-end justify-between gap-4 border-b border-[#d6d1c8] pb-5">
         <h3 className="text-4xl font-black newspaper-title">
           {comments.length === 0
-            ? "No comments"
+            ? "Sin comentarios"
             : `${comments.length} ${comments.length === 1 ? "comentario" : "comentarios"}`}
         </h3>
       </div>

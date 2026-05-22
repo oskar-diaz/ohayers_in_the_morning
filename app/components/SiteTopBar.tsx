@@ -38,12 +38,23 @@ function getTokyoNow() {
 }
 
 function formatTokyoDate() {
-  return new Intl.DateTimeFormat("es-ES", {
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    weekday: "short",
+    timeZone: TOKYO_TIMEZONE,
+  }).formatToParts(new Date());
+
+  const weekday =
+    parts.find((part) => part.type === "weekday")?.value.replaceAll(".", "") ||
+    "";
+
+  const date = new Intl.DateTimeFormat("es-ES", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     timeZone: TOKYO_TIMEZONE,
   }).format(new Date());
+
+  return `${date} （${weekday}）`;
 }
 
 async function getTokyoAnniversary(mmdd: string) {

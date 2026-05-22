@@ -46,8 +46,8 @@ export default async function Home() {
   const categories = await getCategories();
 
   const featured = posts[0];
-  const latest = posts.slice(1, 5);
-  const visiblePosts = featured ? [featured, ...latest] : latest;
+  const latest = posts.slice(1);
+  const visiblePosts = featured ? [featured, ...latest] : posts;
   const visibleSlugs = visiblePosts
     .map((post: any) => post.slug?.current)
     .filter((slug: string | undefined): slug is string => Boolean(slug));
