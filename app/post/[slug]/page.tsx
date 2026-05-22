@@ -103,14 +103,22 @@ export default async function PostPage({
 
       {/* HERO IMAGE */}
       {post.mainImage && (
-        <div className="relative aspect-[16/7] w-full overflow-hidden">
-          <Image
-            src={urlFor(post.mainImage).url()}
-            alt={post.title}
-            fill
-            priority
-            className="object-cover"
-          />
+        <div className="w-full bg-[#ece8df] border-b newspaper-border">
+          <div className="max-w-7xl mx-auto px-6 py-10">
+            <Image
+              src={urlFor(post.mainImage).url()}
+              alt={post.title}
+              width={1600}
+              height={900}
+              priority
+              className="
+          w-full
+          h-auto
+          object-contain
+          max-h-[85vh]
+        "
+            />
+          </div>
         </div>
       )}
 
@@ -225,6 +233,37 @@ export default async function PostPage({
           />
 
           <div className="clear-both" />
+        </div>
+        {/* SHARE */}
+        <div className="mt-24 pt-10 border-t newspaper-border">
+          <div className="flex items-center justify-between flex-wrap gap-6">
+            <div className="flex gap-4">
+              {/* TWITTER/X */}
+              <a
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
+                  post.title,
+                )}&url=${encodeURIComponent(
+                  `https://ohayers-in-the-morning.vercel.app/post/${slug}`,
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="
+          px-5
+          py-3
+          border
+          newspaper-border
+          uppercase
+          text-sm
+          tracking-wide
+          hover:bg-black
+          hover:text-white
+          transition
+        "
+              >
+                Pa twitter
+              </a>
+            </div>
+          </div>
         </div>
       </article>
     </main>
