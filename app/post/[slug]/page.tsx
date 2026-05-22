@@ -1,11 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { Metadata } from "next";
 
 import { PortableText } from "@portabletext/react";
 
 import { getViews } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
+import { siteName, siteUrl } from "@/lib/site";
 import PostViews from "./PostViews";
 
 export const revalidate = 0;
@@ -35,7 +37,7 @@ export async function generateMetadata({
   params,
 }: {
   params: Promise<{ slug: string }>;
-}) {
+}): Promise<Metadata> {
   const { slug } = await params;
 
   const post = await getPost(slug);
@@ -44,34 +46,41 @@ export async function generateMetadata({
     return {};
   }
 
-  const url = `https://ohayers-in-the-morning.vercel.app/post/${slug}`;
+  const url = `${siteUrl}/post/${slug}`;
+  const description = post.excerpt || "Tengo el ikigai moreno";
 
   const imageUrl = post.mainImage
     ? urlFor(post.mainImage).width(1200).height(630).fit("crop").url()
-    : "";
+    : undefined;
 
   return {
-    title: `${post.title} | OHAYERS IN THE MORNING`,
+    title: `${post.title} | ${siteName}`,
 
-    description: post.excerpt || "Tengo el ikigai moreno",
+    description,
+
+    alternates: {
+      canonical: url,
+    },
 
     openGraph: {
       title: post.title,
 
-      description: post.excerpt,
+      description,
 
       url,
 
-      siteName: "OHAYERS IN THE MORNING",
+      siteName,
 
-      images: [
-        {
-          url: imageUrl,
-          width: 1200,
-          height: 630,
-          alt: post.title,
-        },
-      ],
+      images: imageUrl
+        ? [
+            {
+              url: imageUrl,
+              width: 1200,
+              height: 630,
+              alt: post.title,
+            },
+          ]
+        : [],
 
       locale: "es_ES",
 
@@ -83,9 +92,9 @@ export async function generateMetadata({
 
       title: post.title,
 
-      description: post.excerpt,
+      description,
 
-      images: [imageUrl],
+      images: imageUrl ? [imageUrl] : [],
     },
   };
 }
