@@ -202,22 +202,6 @@ export default function Comments({ slug }: { slug: string }) {
   }, [slug]);
 
   useEffect(() => {
-    if (!user) {
-      console.log("[comments-auth-debug] no user session");
-      return;
-    }
-
-    console.log("[comments-auth-debug]", {
-      email: user.email,
-      normalizedEmail: normalizeEmail(user.email),
-      appMetadata: user.app_metadata,
-      identities: user.identities,
-      isGoogleUser: isGoogleUser(),
-      isGoogleAdmin: isGoogleAdmin(),
-    });
-  }, [user]);
-
-  useEffect(() => {
     const intervalId = window.setInterval(() => {
       setNowTimestamp(Date.now());
     }, 60_000);
