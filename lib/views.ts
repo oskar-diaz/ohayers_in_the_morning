@@ -1,4 +1,4 @@
-import { redis } from "./redis";
+import { hasRedisEnv, redis } from "./redis";
 
 function getViewsKey(slug: string) {
   return `views:${slug}`;
@@ -6,40 +6,65 @@ function getViewsKey(slug: string) {
 
 export async function getViews(slug: string) {
   if (!redis) {
+    if (!hasRedisEnv) {
+      console.error("Upstash Redis env vars are missing for getViews()");
+    }
+
     return 0;
   }
 
-  const views = await redis.get<number>(getViewsKey(slug));
+  try {
+    const views = await redis.get<number>(getViewsKey(slug));
 
-  return Number(views ?? 0);
+    return Number(views ?? 0);
+  } catch (error) {
+    console.error("Failed to read views from Upstash Redis", error);
+    return 0;
+  }
 }
 
 export async function getViewsBySlug(slugs: string[]) {
   const uniqueSlugs = [...new Set(slugs)];
 
   if (!redis || slugs.length === 0) {
+    if (!redis && uniqueSlugs.length > 0 && !hasRedisEnv) {
+      console.error("Upstash Redis env vars are missing for getViewsBySlug()");
+    }
+
     return Object.fromEntries(
       uniqueSlugs.map((slug) => [slug, 0]),
     ) as Record<string, number>;
   }
 
-  const pipeline = redis.pipeline();
+  try {
+    const pipeline = redis.pipeline();
 
-  for (const slug of uniqueSlugs) {
-    pipeline.get<number>(getViewsKey(slug));
+    for (const slug of uniqueSlugs) {
+      pipeline.get<number>(getViewsKey(slug));
+    }
+
+    const results = await pipeline.exec<(number | null)[]>();
+
+    return Object.fromEntries(
+      uniqueSlugs.map((slug, index) => [slug, Number(results[index] ?? 0)]),
+    ) as Record<string, number>;
+  } catch (error) {
+    console.error("Failed to batch read views from Upstash Redis", error);
+    return Object.fromEntries(
+      uniqueSlugs.map((slug) => [slug, 0]),
+    ) as Record<string, number>;
   }
-
-  const results = await pipeline.exec<(number | null)[]>();
-
-  return Object.fromEntries(
-    uniqueSlugs.map((slug, index) => [slug, Number(results[index] ?? 0)]),
-  ) as Record<string, number>;
 }
 
 export async function incrementViews(slug: string) {
   if (!redis) {
-    return 0;
+    throw new Error("Upstash Redis is not configured");
   }
 
-  return redis.incr(getViewsKey(slug));
+  try {
+    return await redis.incr(getViewsKey(slug));
+  } catch (error) {
+    console.error("Failed to increment views in Upstash Redis", error);
+    throw error;
+  }
 }
