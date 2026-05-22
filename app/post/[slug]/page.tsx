@@ -1,3 +1,4 @@
+import { redis } from "@/lib/redis";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -79,10 +80,16 @@ export default async function PostPage({
   if (!post) {
     return (
       <main className="p-10">
-        <h1>Post not found</h1>
+        <h1>Pues no fona esto, el ikigai que se ha ido por el orto</h1>
       </main>
     );
   }
+
+  const viewsKey = `views:${slug}`;
+
+  await redis.incr(viewsKey);
+
+  const views = await redis.get<number>(viewsKey);
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
@@ -173,7 +180,9 @@ export default async function PostPage({
               {new Date(post.publishedAt).toLocaleDateString()}
             </p>
 
-            <p className="text-gray-400 text-sm mt-1">4 min de lectura</p>
+            <p className="text-gray-400 text-sm mt-1">
+              {views?.toLocaleString()} views
+            </p>
           </div>
         </div>
 

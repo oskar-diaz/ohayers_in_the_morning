@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import Weather from "./components/Weather";
-
+import { getViews } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
@@ -43,6 +43,13 @@ export default async function Home() {
 
   const featured = posts[0];
   const latest = posts.slice(1, 5);
+  const featuredViews = await getViews(featured.slug.current);
+  const latestWithViews = await Promise.all(
+    latest.map(async (post: any) => ({
+      ...post,
+      views: await getViews(post.slug.current),
+    })),
+  );
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
@@ -185,6 +192,8 @@ export default async function Home() {
 
                 <p className="text-gray-500 text-sm">
                   {new Date(featured.publishedAt).toLocaleDateString()}
+                  {" · "}
+                  {featuredViews.toLocaleString()} lecturas
                 </p>
               </div>
             </div>
@@ -194,7 +203,7 @@ export default async function Home() {
 
       {/* NEWS GRID */}
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
-        {latest.map((post: any) => (
+        {latestWithViews.map((post: any) => (
           <article key={post._id} className="border-b newspaper-border pb-10">
             {/* IMAGE */}
             <Link href={`/post/${post.slug.current}`}>
@@ -257,6 +266,8 @@ export default async function Home() {
 
                 <p className="text-gray-500 text-xs">
                   {new Date(post.publishedAt).toLocaleDateString()}
+                  {" · "}
+                  {post.views.toLocaleString()} views
                 </p>
               </div>
             </div>
