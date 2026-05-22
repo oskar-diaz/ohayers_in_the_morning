@@ -1,4 +1,3 @@
-import { redis } from "@/lib/redis";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -8,6 +7,17 @@ import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
 export const revalidate = 0;
+
+let redis: any = null;
+
+if (process.env.UPSTASH_REDIS_REST_URL) {
+  const { Redis } = await import("@upstash/redis");
+
+  redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  });
+}
 
 async function getPost(slug: string) {
   return client.fetch(`
@@ -108,9 +118,11 @@ export default async function PostPage({
 
   const viewsKey = `views:${slug}`;
 
-  await redis.incr(viewsKey);
+  if (redis) {
+    await redis.incr(viewsKey);
+  }
 
-  const views = await redis.get<number>(viewsKey);
+  const views = redis ? await redis.get<number>(viewsKey) : 0;
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
