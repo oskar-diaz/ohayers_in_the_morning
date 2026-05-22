@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import Weather from "./components/Weather";
+
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
@@ -63,14 +64,14 @@ export default async function Home() {
           <Link href="/">
             <h1
               className="
-    newspaper-title
-    font-black
-    uppercase
-    leading-[0.9]
-    tracking-[-0.055em]
-    whitespace-nowrap
-    text-[clamp(2.8rem,8vw,6.5rem)]
-  "
+                newspaper-title
+                font-black
+                uppercase
+                leading-[0.9]
+                tracking-[-0.055em]
+                whitespace-nowrap
+                text-[clamp(2.8rem,8vw,6.5rem)]
+              "
             >
               OHAYERS IN THE MORNING
             </h1>
@@ -113,14 +114,23 @@ export default async function Home() {
         <section className="max-w-7xl mx-auto px-6 py-12 grid lg:grid-cols-[1.4fr_1fr] gap-12 border-b newspaper-border">
           {/* IMAGE */}
           <Link href={`/post/${featured.slug.current}`}>
-            <div className="relative aspect-[16/10] overflow-hidden">
+            <div className="relative h-[420px] md:h-[560px] overflow-hidden bg-[#ece8df] flex items-center justify-center">
               {featured.mainImage && (
                 <Image
                   src={urlFor(featured.mainImage).url()}
                   alt={featured.title}
-                  fill
+                  width={1600}
+                  height={1000}
                   priority
-                  className="object-cover hover:scale-[1.02] transition duration-500"
+                  className="
+                    w-full
+                    h-full
+                    object-contain
+                    p-4
+                    hover:scale-[1.01]
+                    transition
+                    duration-500
+                  "
                 />
               )}
             </div>
@@ -139,15 +149,15 @@ export default async function Home() {
             <Link href={`/post/${featured.slug.current}`}>
               <h2
                 className="
-    newspaper-title
-    text-[clamp(2.2rem,4vw,4.5rem)]
-    font-black
-    leading-[0.92]
-    tracking-[-0.04em]
-    hover:opacity-70
-    transition
-    max-w-[11ch]
-  "
+                  newspaper-title
+                  text-[clamp(2.2rem,4vw,4.5rem)]
+                  font-black
+                  leading-[0.92]
+                  tracking-[-0.04em]
+                  hover:opacity-70
+                  transition
+                  max-w-[11ch]
+                "
               >
                 {featured.title}
               </h2>
@@ -188,20 +198,28 @@ export default async function Home() {
           <article key={post._id} className="border-b newspaper-border pb-10">
             {/* IMAGE */}
             <Link href={`/post/${post.slug.current}`}>
-              <div className="relative aspect-[16/10] overflow-hidden mb-5">
+              <div className="relative h-[320px] overflow-hidden mb-5 bg-[#ece8df]">
                 {post.mainImage && (
                   <Image
                     src={urlFor(post.mainImage).url()}
                     alt={post.title}
-                    fill
-                    className="object-cover hover:scale-[1.02] transition duration-500"
+                    width={1200}
+                    height={800}
+                    className="
+                      w-full
+                      h-full
+                      object-cover
+                      hover:scale-[1.02]
+                      transition
+                      duration-500
+                    "
                   />
                 )}
               </div>
             </Link>
 
             {/* CATEGORY */}
-            {post.categories?.[0] && (
+            {post.categories?.[0]?.slug?.current && (
               <Link href={`/category/${post.categories[0].slug.current}`}>
                 <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3 hover:opacity-60 transition">
                   {post.categories[0].title}
