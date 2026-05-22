@@ -6,6 +6,8 @@ import { PortableText } from "@portabletext/react";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
+export const revalidate = 0;
+
 async function getPost(slug: string) {
   return client.fetch(`
     *[_type == "post" && slug.current == "${slug}"][0]{

@@ -4,6 +4,8 @@ import Image from "next/image";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
+export const revalidate = 0;
+
 async function getPosts() {
   return client.fetch(`
     *[_type == "post"] | order(publishedAt desc) {
