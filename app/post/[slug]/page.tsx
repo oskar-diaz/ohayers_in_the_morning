@@ -122,7 +122,7 @@ export default async function PostPage({
     await redis.incr(viewsKey);
   }
 
-  const views = redis ? await redis.get<number>(viewsKey) : 0;
+  const views = redis ? Number(await redis.get(viewsKey)) || 0 : 0;
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
