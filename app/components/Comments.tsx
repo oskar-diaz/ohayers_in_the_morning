@@ -81,6 +81,10 @@ function buildCommentTree(records: CommentRecord[]) {
   return roots;
 }
 
+function normalizeEmail(email: string | null | undefined) {
+  return email?.trim().toLowerCase() || "";
+}
+
 export default function Comments({ slug }: { slug: string }) {
   const [comments, setComments] = useState<CommentRecord[]>([]);
   const [user, setUser] = useState<User | null>(null);
@@ -106,12 +110,23 @@ export default function Comments({ slug }: { slug: string }) {
     const providers = Array.isArray(user.app_metadata?.providers)
       ? user.app_metadata.providers
       : [];
+    const identityProviders = Array.isArray(user.identities)
+      ? user.identities
+          .map((identity) => identity.provider)
+          .filter((provider): provider is string => Boolean(provider))
+      : [];
 
-    return primaryProvider === "google" || providers.includes("google");
+    return [primaryProvider, ...providers, ...identityProviders].includes("google");
   }
 
   function isGoogleAdmin() {
-    return Boolean(user?.email && ADMIN_EMAILS.has(user.email) && isGoogleUser());
+    const normalizedUserEmail = normalizeEmail(user?.email);
+
+    return Boolean(
+      normalizedUserEmail &&
+        ADMIN_EMAILS.has(normalizedUserEmail) &&
+        isGoogleUser(),
+    );
   }
 
   function isWithinEditWindow(comment: CommentRecord) {
@@ -326,7 +341,7 @@ export default function Comments({ slug }: { slug: string }) {
       return true;
     }
 
-    return comment.email === user.email;
+    return normalizeEmail(comment.email) === normalizeEmail(user.email);
   }
 
   function canEditComment(comment: CommentRecord) {

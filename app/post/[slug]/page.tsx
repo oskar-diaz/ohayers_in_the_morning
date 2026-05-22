@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
 import Comments from "@/app/components/Comments";
+import PostShareButtons from "@/app/components/PostShareButtons";
 import { PortableText } from "@portabletext/react";
 
 import { getViews } from "@/lib/views";
@@ -259,21 +260,10 @@ export default async function PostPage({
         {/* SHARE */}
         <div className="mt-24 pt-10 border-t newspaper-border">
           <div className="flex items-center justify-between flex-wrap gap-6">
-            <div className="flex gap-4">
-              {/* TWITTER/X */}
-              <a
-                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
-                  post.title,
-                )}&url=${encodeURIComponent(
-                  `${siteUrl}/post/${slug}`,
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="editorial-cta editorial-cta-dark"
-              >
-                Compartir en X
-              </a>
-            </div>
+            <PostShareButtons
+              title={post.title}
+              url={`${siteUrl}/post/${slug}`}
+            />
           </div>
         </div>
         <Comments slug={slug} />

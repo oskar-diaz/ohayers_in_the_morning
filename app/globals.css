@@ -85,6 +85,27 @@ h4 {
   box-shadow: none;
 }
 
+.editorial-share-button {
+  min-height: auto;
+  min-width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.editorial-share-button svg {
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.editorial-share-button:hover {
+  transform: none;
+  box-shadow: none;
+  opacity: 0.8;
+}
+
 .editorial-card {
   border: 1px solid #d6d1c8;
   background: #fffdf8;
