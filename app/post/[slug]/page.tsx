@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
-
+import Comments from "@/app/components/Comments";
 import { PortableText } from "@portabletext/react";
 
 import { getViews } from "@/lib/views";
@@ -121,21 +121,6 @@ export default async function PostPage({
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
-      {/* TOP BAR */}
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="flex justify-between items-center py-4 border-b newspaper-border text-sm">
-          <p>{new Date().toLocaleDateString()}</p>
-
-          <Link href="/">
-            <p className="uppercase tracking-[0.3em] text-xs hover:opacity-70 transition">
-              OHAYERS IN THE MORNING
-            </p>
-          </Link>
-
-          <p>Tokyo 18°C</p>
-        </div>
-      </div>
-
       {/* HERO IMAGE */}
       {post.mainImage && (
         <div className="w-full bg-[#ece8df] border-b newspaper-border">
@@ -284,24 +269,14 @@ export default async function PostPage({
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="
-          px-5
-          py-3
-          border
-          newspaper-border
-          uppercase
-          text-sm
-          tracking-wide
-          hover:bg-black
-          hover:text-white
-          transition
-        "
+                className="editorial-cta editorial-cta-dark"
               >
-                Pa twitter
+                Compartir en X
               </a>
             </div>
           </div>
         </div>
+        <Comments slug={slug} />
       </article>
     </main>
   );

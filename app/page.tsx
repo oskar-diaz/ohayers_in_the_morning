@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import Weather from "./components/Weather";
+import { getCommentCountsBySlug } from "@/lib/comments";
 import { getViewsBySlug } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
@@ -37,6 +37,10 @@ async function getCategories() {
   `);
 }
 
+function formatCommentCount(count: number) {
+  return `${count} ${count === 1 ? "comentario" : "comentarios"}`;
+}
+
 export default async function Home() {
   const posts = await getPosts();
   const categories = await getCategories();
@@ -44,25 +48,17 @@ export default async function Home() {
   const featured = posts[0];
   const latest = posts.slice(1, 5);
   const visiblePosts = featured ? [featured, ...latest] : latest;
-  const views = await getViewsBySlug(
-    visiblePosts
-      .map((post: any) => post.slug?.current)
-      .filter((slug: string | undefined): slug is string => Boolean(slug)),
-  );
+  const visibleSlugs = visiblePosts
+    .map((post: any) => post.slug?.current)
+    .filter((slug: string | undefined): slug is string => Boolean(slug));
+
+  const [views, commentCounts] = await Promise.all([
+    getViewsBySlug(visibleSlugs),
+    getCommentCountsBySlug(visibleSlugs),
+  ]);
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
-      {/* TOP BAR */}
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="flex justify-between items-center py-4 border-b newspaper-border text-sm">
-          <p>{new Date().toLocaleDateString()}</p>
-
-          <p className="uppercase tracking-[0.3em] text-xs">El inventikigai</p>
-
-          <Weather />
-        </div>
-      </div>
-
       {/* HEADER */}
       <header className="max-w-7xl mx-auto px-6 py-10 border-b newspaper-border">
         {/* LOGO */}
@@ -193,6 +189,8 @@ export default async function Home() {
                   {new Date(featured.publishedAt).toLocaleDateString()}
                   {" · "}
                   {(views[featured.slug.current] ?? 0).toLocaleString()} views
+                  {(commentCounts[featured.slug.current] ?? 0) > 0 &&
+                    ` · ${formatCommentCount(commentCounts[featured.slug.current])}`}
                 </p>
               </div>
             </div>
@@ -267,6 +265,8 @@ export default async function Home() {
                   {new Date(post.publishedAt).toLocaleDateString()}
                   {" · "}
                   {(views[post.slug.current] ?? 0).toLocaleString()} views
+                  {(commentCounts[post.slug.current] ?? 0) > 0 &&
+                    ` · ${formatCommentCount(commentCounts[post.slug.current])}`}
                 </p>
               </div>
             </div>
