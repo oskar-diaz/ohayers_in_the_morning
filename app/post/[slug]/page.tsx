@@ -43,26 +43,47 @@ export async function generateMetadata({
     return {};
   }
 
+  const url = `https://ohayers-in-the-morning.vercel.app/post/${slug}`;
+
   const imageUrl = post.mainImage
-    ? urlFor(post.mainImage).width(1200).height(630).url()
+    ? urlFor(post.mainImage).width(1200).height(630).fit("crop").url()
     : "";
 
   return {
     title: `${post.title} | OHAYERS IN THE MORNING`,
 
-    description: post.excerpt,
+    description: post.excerpt || "Tengo el ikigai moreno",
 
     openGraph: {
       title: post.title,
+
       description: post.excerpt,
-      images: [imageUrl],
+
+      url,
+
+      siteName: "OHAYERS IN THE MORNING",
+
+      images: [
+        {
+          url: imageUrl,
+          width: 1200,
+          height: 630,
+          alt: post.title,
+        },
+      ],
+
+      locale: "es_ES",
+
       type: "article",
     },
 
     twitter: {
       card: "summary_large_image",
+
       title: post.title,
+
       description: post.excerpt,
+
       images: [imageUrl],
     },
   };
