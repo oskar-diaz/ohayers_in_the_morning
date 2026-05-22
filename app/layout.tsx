@@ -2,6 +2,7 @@ import "./globals.css";
 
 import type { Metadata } from "next";
 import { Playfair_Display, Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 
 import HideOnStudio from "./components/HideOnStudio";
 import SupabaseAuthReturn from "./components/SupabaseAuthReturn";
@@ -36,6 +37,7 @@ export default function RootLayout({
           <SiteTopBar />
         </HideOnStudio>
         {children}
+        <Analytics />
       </body>
     </html>
   );
