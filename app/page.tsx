@@ -193,7 +193,7 @@ export default async function Home() {
                 <p className="text-gray-500 text-sm">
                   {new Date(featured.publishedAt).toLocaleDateString()}
                   {" · "}
-                  {featuredViews.toLocaleString()} lecturas
+                  {featuredViews.toLocaleString()} views
                 </p>
               </div>
             </div>
