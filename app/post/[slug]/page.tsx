@@ -28,6 +28,45 @@ async function getPost(slug: string) {
   `);
 }
 
+/* SEO + SOCIAL SHARE */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+
+  const post = await getPost(slug);
+
+  if (!post) {
+    return {};
+  }
+
+  const imageUrl = post.mainImage
+    ? urlFor(post.mainImage).width(1200).height(630).url()
+    : "";
+
+  return {
+    title: `${post.title} | OHAYERS IN THE MORNING`,
+
+    description: post.excerpt,
+
+    openGraph: {
+      title: post.title,
+      description: post.excerpt,
+      images: [imageUrl],
+      type: "article",
+    },
+
+    twitter: {
+      card: "summary_large_image",
+      title: post.title,
+      description: post.excerpt,
+      images: [imageUrl],
+    },
+  };
+}
+
 export default async function PostPage({
   params,
 }: {
@@ -58,7 +97,7 @@ export default async function PostPage({
             </p>
           </Link>
 
-          <p>Tokio 18°C</p>
+          <p>Tokyo 18°C</p>
         </div>
       </div>
 
@@ -78,7 +117,7 @@ export default async function PostPage({
       {/* ARTICLE */}
       <article className="max-w-5xl mx-auto px-6 py-16">
         {/* CATEGORY */}
-        {post.categories?.[0] && (
+        {post.categories?.[0]?.slug?.current && (
           <Link href={`/category/${post.categories[0].slug.current}`}>
             <p className="uppercase text-red-700 font-semibold tracking-wide text-sm mb-5 hover:opacity-60 transition">
               {post.categories[0].title}
@@ -186,23 +225,6 @@ export default async function PostPage({
           />
 
           <div className="clear-both" />
-        </div>
-
-        {/* SHARE */}
-        <div className="mt-24 pt-10 border-t newspaper-border">
-          <div className="flex items-center justify-between">
-            <p className="uppercase tracking-widest text-sm text-gray-500">
-              Compartir noticia
-            </p>
-
-            <div className="flex gap-6 text-lg">
-              <button className="hover:opacity-60 transition">X</button>
-
-              <button className="hover:opacity-60 transition">Instagram</button>
-
-              <button className="hover:opacity-60 transition">TikTok</button>
-            </div>
-          </div>
         </div>
       </article>
     </main>
