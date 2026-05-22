@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-
+import Weather from "./components/Weather";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
@@ -16,7 +16,8 @@ async function getPosts() {
       excerpt,
       mainImage,
       categories[]->{
-        title
+        title,
+        slug
       },
       author->{
         name,
@@ -26,8 +27,18 @@ async function getPosts() {
   `);
 }
 
+async function getCategories() {
+  return client.fetch(`
+    *[_type == "category"]{
+      title,
+      slug
+    }
+  `);
+}
+
 export default async function Home() {
   const posts = await getPosts();
+  const categories = await getCategories();
 
   const featured = posts[0];
   const latest = posts.slice(1, 5);
@@ -39,11 +50,9 @@ export default async function Home() {
         <div className="flex justify-between items-center py-4 border-b newspaper-border text-sm">
           <p>{new Date().toLocaleDateString()}</p>
 
-          <p className="uppercase tracking-[0.3em] text-xs">
-            Noticias falsas. Verdad absoluta.
-          </p>
+          <p className="uppercase tracking-[0.3em] text-xs">El inventikigai</p>
 
-          <p>Tokio 18°C</p>
+          <Weather />
         </div>
       </div>
 
@@ -85,23 +94,16 @@ export default async function Home() {
         {/* NAV */}
         <div className="flex justify-center mt-10">
           <nav className="flex gap-8 uppercase text-sm overflow-x-auto">
-            <p className="hover:opacity-60 transition cursor-pointer">Japón</p>
-
-            <p className="hover:opacity-60 transition cursor-pointer">
-              Tecnología
-            </p>
-
-            <p className="hover:opacity-60 transition cursor-pointer">
-              Economía
-            </p>
-
-            <p className="hover:opacity-60 transition cursor-pointer">
-              Cultura
-            </p>
-
-            <p className="hover:opacity-60 transition cursor-pointer">
-              Opinión
-            </p>
+            {categories.map((category: any) => (
+              <Link
+                key={category.slug.current}
+                href={`/category/${category.slug.current}`}
+              >
+                <p className="hover:opacity-60 transition cursor-pointer whitespace-nowrap">
+                  {category.title}
+                </p>
+              </Link>
+            ))}
           </nav>
         </div>
       </header>
@@ -126,10 +128,12 @@ export default async function Home() {
 
           {/* TEXT */}
           <div className="flex flex-col justify-center">
-            {featured.categories?.[0] && (
-              <p className="uppercase text-red-700 font-semibold tracking-wide text-sm mb-4">
-                {featured.categories[0].title}
-              </p>
+            {featured.categories?.[0]?.slug?.current && (
+              <Link href={`/category/${featured.categories[0].slug.current}`}>
+                <p className="uppercase text-red-700 font-semibold tracking-wide text-sm mb-4 hover:opacity-60 transition">
+                  {featured.categories[0].title}
+                </p>
+              </Link>
             )}
 
             <Link href={`/post/${featured.slug.current}`}>
@@ -198,9 +202,11 @@ export default async function Home() {
 
             {/* CATEGORY */}
             {post.categories?.[0] && (
-              <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3">
-                {post.categories[0].title}
-              </p>
+              <Link href={`/category/${post.categories[0].slug.current}`}>
+                <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3 hover:opacity-60 transition">
+                  {post.categories[0].title}
+                </p>
+              </Link>
             )}
 
             {/* TITLE */}

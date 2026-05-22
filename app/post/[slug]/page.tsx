@@ -17,7 +17,8 @@ async function getPost(slug: string) {
       body,
       mainImage,
       categories[]->{
-        title
+        title,
+        slug
       },
       author->{
         name,
@@ -78,9 +79,11 @@ export default async function PostPage({
       <article className="max-w-5xl mx-auto px-6 py-16">
         {/* CATEGORY */}
         {post.categories?.[0] && (
-          <p className="uppercase text-red-700 font-semibold tracking-wide text-sm mb-5">
-            {post.categories[0].title}
-          </p>
+          <Link href={`/category/${post.categories[0].slug.current}`}>
+            <p className="uppercase text-red-700 font-semibold tracking-wide text-sm mb-5 hover:opacity-60 transition">
+              {post.categories[0].title}
+            </p>
+          </Link>
         )}
 
         {/* TITLE */}
