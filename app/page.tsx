@@ -42,7 +42,7 @@ export default async function Home() {
   const categories = await getCategories();
 
   const featured = posts[0];
-  const latest = posts.slice(1, 5);
+  const latest = posts.slice(1);
   const featuredViews = await getViews(featured.slug.current);
   const latestWithViews = await Promise.all(
     latest.map(async (post: any) => ({
