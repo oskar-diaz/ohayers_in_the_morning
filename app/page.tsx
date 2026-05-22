@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import Weather from "./components/Weather";
-import { getViews } from "@/lib/views";
+import { getViewsBySlug } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
@@ -42,13 +42,12 @@ export default async function Home() {
   const categories = await getCategories();
 
   const featured = posts[0];
-  const latest = posts.slice(1);
-  const featuredViews = await getViews(featured.slug.current);
-  const latestWithViews = await Promise.all(
-    latest.map(async (post: any) => ({
-      ...post,
-      views: await getViews(post.slug.current),
-    })),
+  const latest = posts.slice(1, 5);
+  const visiblePosts = featured ? [featured, ...latest] : latest;
+  const views = await getViewsBySlug(
+    visiblePosts
+      .map((post: any) => post.slug?.current)
+      .filter((slug: string | undefined): slug is string => Boolean(slug)),
   );
 
   return (
@@ -193,7 +192,7 @@ export default async function Home() {
                 <p className="text-gray-500 text-sm">
                   {new Date(featured.publishedAt).toLocaleDateString()}
                   {" · "}
-                  {featuredViews.toLocaleString()} views
+                  {(views[featured.slug.current] ?? 0).toLocaleString()} views
                 </p>
               </div>
             </div>
@@ -203,7 +202,7 @@ export default async function Home() {
 
       {/* NEWS GRID */}
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
-        {latestWithViews.map((post: any) => (
+        {latest.map((post: any) => (
           <article key={post._id} className="border-b newspaper-border pb-10">
             {/* IMAGE */}
             <Link href={`/post/${post.slug.current}`}>
@@ -267,7 +266,7 @@ export default async function Home() {
                 <p className="text-gray-500 text-xs">
                   {new Date(post.publishedAt).toLocaleDateString()}
                   {" · "}
-                  {post.views.toLocaleString()} views
+                  {(views[post.slug.current] ?? 0).toLocaleString()} views
                 </p>
               </div>
             </div>

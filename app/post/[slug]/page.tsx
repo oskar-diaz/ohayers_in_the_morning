@@ -3,21 +3,12 @@ import Link from "next/link";
 
 import { PortableText } from "@portabletext/react";
 
+import { getViews } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
+import PostViews from "./PostViews";
 
 export const revalidate = 0;
-
-let redis: any = null;
-
-if (process.env.UPSTASH_REDIS_REST_URL) {
-  const { Redis } = await import("@upstash/redis");
-
-  redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
-  });
-}
 
 async function getPost(slug: string) {
   return client.fetch(`
@@ -116,13 +107,7 @@ export default async function PostPage({
     );
   }
 
-  const viewsKey = `views:${slug}`;
-
-  if (redis) {
-    await redis.incr(viewsKey);
-  }
-
-  const views = redis ? Number(await redis.get(viewsKey)) || 0 : 0;
+  const views = await getViews(slug);
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
@@ -214,7 +199,7 @@ export default async function PostPage({
             </p>
 
             <p className="text-gray-400 text-sm mt-1">
-              {views?.toLocaleString()} views
+              <PostViews slug={slug} initialViews={views} />
             </p>
           </div>
         </div>

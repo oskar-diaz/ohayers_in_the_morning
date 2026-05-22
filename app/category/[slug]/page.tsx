@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 
+import { getViewsBySlug } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
@@ -41,6 +42,13 @@ export default async function CategoryPage({
   const { slug } = await params;
 
   const posts = await getCategoryPosts(slug);
+  const views = await getViewsBySlug(
+    posts
+      .map((post: any) => post.slug?.current)
+      .filter((postSlug: string | undefined): postSlug is string =>
+        Boolean(postSlug),
+      ),
+  );
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
@@ -112,6 +120,8 @@ export default async function CategoryPage({
 
                 <p className="text-gray-500 text-xs">
                   {new Date(post.publishedAt).toLocaleDateString()}
+                  {" · "}
+                  {(views[post.slug.current] ?? 0).toLocaleString()} views
                 </p>
               </div>
             </div>
