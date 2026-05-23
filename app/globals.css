@@ -160,3 +160,35 @@ h4 {
   color: #111111;
   transform: translateY(-1px);
 }
+
+.editorial-inline-link {
+  color: #9f1d1d;
+  font-weight: 700;
+  text-decoration-line: underline;
+  text-decoration-color: rgba(159, 29, 29, 0.65);
+  text-decoration-thickness: 0.14em;
+  text-underline-offset: 0.16em;
+  background-image: linear-gradient(
+    180deg,
+    transparent 0,
+    transparent 68%,
+    rgba(159, 29, 29, 0.14) 68%,
+    rgba(159, 29, 29, 0.14) 100%
+  );
+  transition:
+    color 160ms ease,
+    text-decoration-color 160ms ease,
+    background-size 160ms ease,
+    background-color 160ms ease;
+}
+
+.editorial-inline-link:hover {
+  color: #6f1010;
+  text-decoration-color: rgba(111, 16, 16, 0.95);
+}
+
+.editorial-inline-link:focus-visible {
+  outline: 2px solid rgba(159, 29, 29, 0.45);
+  outline-offset: 3px;
+  border-radius: 0.15rem;
+}

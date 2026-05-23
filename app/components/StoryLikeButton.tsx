@@ -2,7 +2,7 @@
 
 import { startTransition, useState } from "react";
 
-const LIKED_POSTS_STORAGE_KEY = "liked-posts";
+import { getLikedPosts, useLikedPost, writeLikedPosts } from "@/app/components/likedPostsStore";
 
 type StoryLikeButtonProps = {
   slug: string;
@@ -10,43 +10,13 @@ type StoryLikeButtonProps = {
   compact?: boolean;
 };
 
-function readLikedPosts() {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  try {
-    const storedValue = window.localStorage.getItem(LIKED_POSTS_STORAGE_KEY);
-
-    if (!storedValue) {
-      return [];
-    }
-
-    const parsedValue = JSON.parse(storedValue);
-
-    if (!Array.isArray(parsedValue)) {
-      return [];
-    }
-
-    return parsedValue.filter(
-      (value): value is string => typeof value === "string",
-    );
-  } catch {
-    return [];
-  }
-}
-
-function writeLikedPosts(slugs: string[]) {
-  window.localStorage.setItem(LIKED_POSTS_STORAGE_KEY, JSON.stringify(slugs));
-}
-
 export default function StoryLikeButton({
   slug,
   initialLikes,
   compact = false,
 }: StoryLikeButtonProps) {
   const [likes, setLikes] = useState(initialLikes);
-  const [liked, setLiked] = useState(() => readLikedPosts().includes(slug));
+  const liked = useLikedPost(slug);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleLike() {
@@ -67,7 +37,7 @@ export default function StoryLikeButton({
       }
 
       const data = (await response.json()) as { likes?: number };
-      const likedPosts = readLikedPosts();
+      const likedPosts = getLikedPosts();
       const nextLikedPosts = likedPosts.includes(slug)
         ? likedPosts
         : [...likedPosts, slug];
@@ -75,8 +45,7 @@ export default function StoryLikeButton({
       writeLikedPosts(nextLikedPosts);
 
       startTransition(() => {
-        setLikes(data.likes ?? likes + 1);
-        setLiked(true);
+        setLikes((currentLikes) => data.likes ?? currentLikes + 1);
       });
     } catch {
       // Ignore transient failures and preserve the current UI state.

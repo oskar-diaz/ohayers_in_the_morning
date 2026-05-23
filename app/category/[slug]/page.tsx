@@ -8,8 +8,47 @@ import { urlFor } from "@/sanity/lib/image";
 
 export const revalidate = 0;
 
+type Category = {
+  title?: string;
+  description?: string;
+};
+
+type PostCategory = {
+  title: string;
+  slug?: {
+    current?: string;
+  };
+};
+
+type CategoryPost = {
+  _id: string;
+  title: string;
+  excerpt?: string;
+  publishedAt: string;
+  mainImage?: unknown;
+  slug?: {
+    current?: string;
+  };
+  categories?: PostCategory[];
+};
+
+async function getCategory(slug: string) {
+  return client.fetch<Category | null>(
+    `
+    *[
+      _type == "category" &&
+      slug.current == $slug
+    ][0]{
+      title,
+      description
+    }
+  `,
+    { slug },
+  );
+}
+
 async function getCategoryPosts(slug: string) {
-  return client.fetch(
+  return client.fetch<CategoryPost[]>(
     `
     *[
       _type == "post" &&
@@ -42,10 +81,13 @@ export default async function CategoryPage({
 }) {
   const { slug } = await params;
 
-  const posts = await getCategoryPosts(slug);
+  const [category, posts] = await Promise.all([
+    getCategory(slug),
+    getCategoryPosts(slug),
+  ]);
   const views = await getViewsBySlug(
     posts
-      .map((post: any) => post.slug?.current)
+      .map((post) => post.slug?.current)
       .filter((postSlug: string | undefined): postSlug is string =>
         Boolean(postSlug),
       ),
@@ -62,13 +104,19 @@ export default async function CategoryPage({
         </Link>
 
         <p className="uppercase text-red-700 tracking-[0.3em] text-xs mt-4">
-          Categoría: {slug}
+          Categoría: {category?.title ?? slug}
         </p>
+
+        {category?.description && (
+          <p className="mt-5 max-w-3xl text-lg leading-relaxed text-[#4f4a43]">
+            {category.description}
+          </p>
+        )}
       </div>
 
       {/* POSTS */}
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
-        {posts.map((post: any) => {
+        {posts.map((post) => {
           const displayAuthorName = getDisplayAuthorName(post.slug.current);
 
           return (

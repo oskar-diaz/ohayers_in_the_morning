@@ -249,6 +249,34 @@ export default async function PostPage({
                   </blockquote>
                 ),
               },
+
+              marks: {
+                link: ({ children, value }) => {
+                  const href =
+                    typeof value?.href === "string" ? value.href : undefined;
+
+                  if (!href) {
+                    return <>{children}</>;
+                  }
+
+                  const isExternal = /^https?:\/\//.test(href);
+
+                  return (
+                    <a
+                      href={href}
+                      className="editorial-inline-link"
+                      {...(isExternal
+                        ? {
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                          }
+                        : {})}
+                    >
+                      {children}
+                    </a>
+                  );
+                },
+              },
             }}
           />
 
