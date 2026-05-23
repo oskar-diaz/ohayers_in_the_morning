@@ -53,7 +53,13 @@ export default function PostShareButtons({
   return (
     <div className="flex flex-wrap gap-3">
       {shareButtons.map(({ Button, Icon, label }) => (
-        <Button key={label} url={url} title={title} aria-label={`Compartir en ${label}`}>
+        <Button
+          key={label}
+          url={url}
+          title={title}
+          aria-label={`Compartir en ${label}`}
+          className="cursor-pointer"
+        >
           <span className="editorial-cta editorial-share-button">
             <Icon size={34} round={false} borderRadius={12} />
           </span>

@@ -96,7 +96,7 @@ export default function StoryLikeButton({
       type="button"
       onClick={handleLike}
       disabled={liked || isSubmitting}
-      className="inline-flex items-center gap-2 whitespace-nowrap font-semibold uppercase leading-none text-[#b93c3c] transition hover:text-[#8f1f1f] disabled:cursor-not-allowed disabled:opacity-100"
+      className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap font-semibold uppercase leading-none text-[#b93c3c] transition hover:text-[#8f1f1f] disabled:cursor-not-allowed disabled:opacity-100"
       aria-pressed={liked}
       aria-label={liked ? "Ya te gusta este post" : "Dar me gusta a este post"}
     >
