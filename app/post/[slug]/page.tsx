@@ -5,10 +5,13 @@ import Comments from "@/app/components/Comments";
 import PostShareButtons from "@/app/components/PostShareButtons";
 import { PortableText } from "@portabletext/react";
 
+import { getDisplayAuthorName } from "@/lib/display-author";
+import { getLikes } from "@/lib/likes";
 import { getViews } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 import { siteName, siteUrl } from "@/lib/site";
+import PostLikes from "./PostLikes";
 import PostViews from "./PostViews";
 
 export const revalidate = 0;
@@ -118,7 +121,8 @@ export default async function PostPage({
     );
   }
 
-  const views = await getViews(slug);
+  const [views, likes] = await Promise.all([getViews(slug), getLikes(slug)]);
+  const displayAuthorName = getDisplayAuthorName(slug);
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
@@ -159,6 +163,10 @@ export default async function PostPage({
           {post.title}
         </h1>
 
+        <div className="mt-8">
+          <PostLikes slug={slug} initialLikes={likes} />
+        </div>
+
         {/* EXCERPT */}
         {post.excerpt && (
           <p className="mt-10 text-2xl text-gray-700 leading-relaxed font-light max-w-4xl">
@@ -169,20 +177,9 @@ export default async function PostPage({
         {/* META */}
         <div className="flex items-center justify-between mt-12 pb-10 border-b newspaper-border">
           {/* AUTHOR */}
-          <div className="flex items-center gap-4">
-            {post.author?.image && (
-              <div className="relative w-14 h-14 rounded-full overflow-hidden">
-                <Image
-                  src={urlFor(post.author.image).url()}
-                  alt={post.author.name}
-                  fill
-                  className="object-cover"
-                />
-              </div>
-            )}
-
+          <div>
             <div>
-              <p className="font-semibold text-lg">{post.author?.name}</p>
+              <p className="font-semibold text-lg">{displayAuthorName}</p>
 
               <p className="text-gray-500 text-sm">Redacción Ohayers</p>
             </div>

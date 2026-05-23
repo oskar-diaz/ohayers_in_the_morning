@@ -1,4 +1,5 @@
 import { client } from "@/sanity/lib/client";
+import { getDisplayAuthorName } from "@/lib/display-author";
 import { siteName, siteUrl } from "@/lib/site";
 import { urlFor } from "@/sanity/lib/image";
 
@@ -62,9 +63,7 @@ export async function GET() {
         ${imageUrl ? `<p><img src="${imageUrl}" alt="${escapeXml(post.title)}" /></p>` : ""}
         ${post.excerpt ? `<p>${escapeXml(post.excerpt)}</p>` : ""}
       `.trim();
-      const author = post.author?.name
-        ? `<author>${escapeXml(post.author.name)}</author>`
-        : "";
+      const author = `<author>${escapeXml(getDisplayAuthorName(post.slug.current))}</author>`;
       const mediaContent = imageUrl
         ? `<media:content url="${escapeXml(imageUrl)}" medium="image" />`
         : "";

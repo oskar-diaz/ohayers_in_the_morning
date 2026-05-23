@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 
+import { getDisplayAuthorName } from "@/lib/display-author";
 import { getViewsBySlug } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
@@ -67,66 +68,59 @@ export default async function CategoryPage({
 
       {/* POSTS */}
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
-        {posts.map((post: any) => (
-          <article key={post._id} className="border-b newspaper-border pb-10">
-            {/* IMAGE */}
-            <Link href={`/post/${post.slug.current}`}>
-              <div className="relative aspect-[16/10] overflow-hidden mb-5">
-                {post.mainImage && (
-                  <Image
-                    src={urlFor(post.mainImage).url()}
-                    alt={post.title}
-                    fill
-                    className="object-cover hover:scale-[1.02] transition duration-500"
-                  />
-                )}
-              </div>
-            </Link>
+        {posts.map((post: any) => {
+          const displayAuthorName = getDisplayAuthorName(post.slug.current);
 
-            {/* CATEGORY */}
-            {post.categories?.[0] && (
-              <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3">
-                {post.categories[0].title}
-              </p>
-            )}
-
-            {/* TITLE */}
-            <Link href={`/post/${post.slug.current}`}>
-              <h2 className="newspaper-title text-[clamp(2rem,3vw,3rem)] font-black leading-[0.95] hover:opacity-70 transition">
-                {post.title}
-              </h2>
-            </Link>
-
-            {/* EXCERPT */}
-            <p className="mt-4 text-gray-700 leading-relaxed text-lg">
-              {post.excerpt}
-            </p>
-
-            {/* AUTHOR */}
-            <div className="flex items-center gap-3 mt-6">
-              {post.author?.image && (
-                <div className="relative w-10 h-10 rounded-full overflow-hidden">
-                  <Image
-                    src={urlFor(post.author.image).url()}
-                    alt={post.author.name}
-                    fill
-                    className="object-cover"
-                  />
+          return (
+            <article key={post._id} className="border-b newspaper-border pb-10">
+              {/* IMAGE */}
+              <Link href={`/post/${post.slug.current}`}>
+                <div className="relative aspect-[16/10] overflow-hidden mb-5">
+                  {post.mainImage && (
+                    <Image
+                      src={urlFor(post.mainImage).url()}
+                      alt={post.title}
+                      fill
+                      className="object-cover hover:scale-[1.02] transition duration-500"
+                    />
+                  )}
                 </div>
+              </Link>
+
+              {/* CATEGORY */}
+              {post.categories?.[0] && (
+                <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3">
+                  {post.categories[0].title}
+                </p>
               )}
 
-              <div>
-                <p className="font-medium text-sm">{post.author?.name}</p>
+              {/* TITLE */}
+              <Link href={`/post/${post.slug.current}`}>
+                <h2 className="newspaper-title text-[clamp(2rem,3vw,3rem)] font-black leading-[0.95] hover:opacity-70 transition">
+                  {post.title}
+                </h2>
+              </Link>
 
-                <p className="text-gray-500 text-xs">
-                  {new Date(post.publishedAt).toLocaleDateString()}
-                  {" · "}
-                  {(views[post.slug.current] ?? 0).toLocaleString()} views
-                </p>
+              {/* EXCERPT */}
+              <p className="mt-4 text-gray-700 leading-relaxed text-lg">
+                {post.excerpt}
+              </p>
+
+              {/* AUTHOR */}
+              <div className="mt-6">
+                <div>
+                  <p className="font-medium text-sm">{displayAuthorName}</p>
+
+                  <p className="text-gray-500 text-xs">
+                    {new Date(post.publishedAt).toLocaleDateString()}
+                    {" · "}
+                    {(views[post.slug.current] ?? 0).toLocaleString()} vistas
+                  </p>
+                </div>
               </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </section>
     </main>
   );

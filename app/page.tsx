@@ -1,6 +1,9 @@
 import Link from "next/link";
 import Image from "next/image";
+import StoryLikeButton from "@/app/components/StoryLikeButton";
 import { getCommentCountsBySlug } from "@/lib/comments";
+import { getDisplayAuthorName } from "@/lib/display-author";
+import { getLikesBySlug } from "@/lib/likes";
 import { getViewsBySlug } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
@@ -37,8 +40,69 @@ async function getCategories() {
   `);
 }
 
-function formatCommentCount(count: number) {
-  return `${count} ${count === 1 ? "comentario" : "comentarios"}`;
+function StoryMeta({
+  slug,
+  publishedAt,
+  views,
+  likes,
+  comments,
+  compact = false,
+}: {
+  slug: string;
+  publishedAt: string;
+  views: number;
+  likes: number;
+  comments: number;
+  compact?: boolean;
+}) {
+  const itemClassName = compact
+    ? "inline-flex items-center gap-1.5 text-[0.82rem] font-medium tracking-[0.04em] text-[#7a746b] leading-none"
+    : "inline-flex items-center gap-2 text-[0.9rem] font-medium tracking-[0.04em] text-[#7a746b] leading-none";
+
+  const iconClassName = compact
+    ? "h-[20px] w-[20px] shrink-0"
+    : "h-[24px] w-[24px] shrink-0";
+  const commentLabel =
+    comments === 1
+      ? "1 comentario"
+      : `${comments.toLocaleString()} comentarios`;
+
+  return (
+    <div
+      className={`flex w-full items-center justify-between gap-4 ${
+        compact ? "mt-4" : "mt-6"
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <span className={itemClassName}>
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            className={`${iconClassName} text-[#8f6a2a]`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
+            <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+            <path d="M7.5 3.5v4M16.5 3.5v4M3.5 9.5h17" />
+          </svg>
+          <span>{new Date(publishedAt).toLocaleDateString()}</span>
+        </span>
+
+        <span className={itemClassName}>
+          <span>{views.toLocaleString()} vistas</span>
+        </span>
+
+        {comments > 0 && (
+          <span className={itemClassName}>
+            <span>{commentLabel}</span>
+          </span>
+        )}
+      </div>
+
+      <StoryLikeButton slug={slug} initialLikes={likes} compact={compact} />
+    </div>
+  );
 }
 
 export default async function Home() {
@@ -52,10 +116,14 @@ export default async function Home() {
     .map((post: any) => post.slug?.current)
     .filter((slug: string | undefined): slug is string => Boolean(slug));
 
-  const [views, commentCounts] = await Promise.all([
+  const [views, commentCounts, likes] = await Promise.all([
     getViewsBySlug(visibleSlugs),
     getCommentCountsBySlug(visibleSlugs),
+    getLikesBySlug(visibleSlugs),
   ]);
+  const featuredAuthorName = featured?.slug?.current
+    ? getDisplayAuthorName(featured.slug.current)
+    : null;
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
@@ -165,32 +233,23 @@ export default async function Home() {
               </h2>
             </Link>
 
+            <StoryMeta
+              slug={featured.slug.current}
+              publishedAt={featured.publishedAt}
+              views={views[featured.slug.current] ?? 0}
+              likes={likes[featured.slug.current] ?? 0}
+              comments={commentCounts[featured.slug.current] ?? 0}
+            />
+
             <p className="mt-8 text-2xl text-gray-700 leading-relaxed font-light">
               {featured.excerpt}
             </p>
 
             {/* AUTHOR */}
-            <div className="flex items-center gap-4 mt-10">
-              {featured.author?.image && (
-                <div className="relative w-14 h-14 rounded-full overflow-hidden">
-                  <Image
-                    src={urlFor(featured.author.image).url()}
-                    alt={featured.author.name}
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-              )}
-
+            <div className="mt-10">
               <div>
-                <p className="font-semibold">{featured.author?.name}</p>
-
-                <p className="text-gray-500 text-sm">
-                  {new Date(featured.publishedAt).toLocaleDateString()}
-                  {" · "}
-                  {(views[featured.slug.current] ?? 0).toLocaleString()} views
-                  {(commentCounts[featured.slug.current] ?? 0) > 0 &&
-                    ` · ${formatCommentCount(commentCounts[featured.slug.current])}`}
+                <p className="text-sm font-medium uppercase tracking-[0.14em] text-[#7a746b]">
+                  {featuredAuthorName}
                 </p>
               </div>
             </div>
@@ -200,78 +259,74 @@ export default async function Home() {
 
       {/* NEWS GRID */}
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
-        {latest.map((post: any) => (
-          <article key={post._id} className="border-b newspaper-border pb-10">
-            {/* IMAGE */}
-            <Link href={`/post/${post.slug.current}`}>
-              <div className="relative h-[320px] overflow-hidden mb-5 bg-[#ece8df]">
-                {post.mainImage && (
-                  <Image
-                    src={urlFor(post.mainImage).url()}
-                    alt={post.title}
-                    width={1200}
-                    height={800}
-                    className="
-                      w-full
-                      h-full
-                      object-cover
-                      hover:scale-[1.02]
-                      transition
-                      duration-500
-                    "
-                  />
-                )}
-              </div>
-            </Link>
+        {latest.map((post: any) => {
+          const displayAuthorName = getDisplayAuthorName(post.slug.current);
 
-            {/* CATEGORY */}
-            {post.categories?.[0]?.slug?.current && (
-              <Link href={`/category/${post.categories[0].slug.current}`}>
-                <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3 hover:opacity-60 transition">
-                  {post.categories[0].title}
-                </p>
-              </Link>
-            )}
-
-            {/* TITLE */}
-            <Link href={`/post/${post.slug.current}`}>
-              <h3 className="newspaper-title text-[clamp(2rem,3vw,3.2rem)] font-black leading-[0.95] hover:opacity-70 transition">
-                {post.title}
-              </h3>
-            </Link>
-
-            {/* EXCERPT */}
-            <p className="mt-4 text-gray-700 leading-relaxed text-lg">
-              {post.excerpt}
-            </p>
-
-            {/* AUTHOR */}
-            <div className="flex items-center gap-3 mt-6">
-              {post.author?.image && (
-                <div className="relative w-10 h-10 rounded-full overflow-hidden">
-                  <Image
-                    src={urlFor(post.author.image).url()}
-                    alt={post.author.name}
-                    fill
-                    className="object-cover"
-                  />
+          return (
+            <article key={post._id} className="border-b newspaper-border pb-10">
+              {/* IMAGE */}
+              <Link href={`/post/${post.slug.current}`}>
+                <div className="relative h-[320px] overflow-hidden mb-5 bg-[#ece8df]">
+                  {post.mainImage && (
+                    <Image
+                      src={urlFor(post.mainImage).url()}
+                      alt={post.title}
+                      width={1200}
+                      height={800}
+                      className="
+                        w-full
+                        h-full
+                        object-cover
+                        hover:scale-[1.02]
+                        transition
+                        duration-500
+                      "
+                    />
+                  )}
                 </div>
+              </Link>
+
+              {/* CATEGORY */}
+              {post.categories?.[0]?.slug?.current && (
+                <Link href={`/category/${post.categories[0].slug.current}`}>
+                  <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3 hover:opacity-60 transition">
+                    {post.categories[0].title}
+                  </p>
+                </Link>
               )}
 
-              <div>
-                <p className="font-medium text-sm">{post.author?.name}</p>
+              {/* TITLE */}
+              <Link href={`/post/${post.slug.current}`}>
+                <h3 className="newspaper-title text-[clamp(2rem,3vw,3.2rem)] font-black leading-[0.95] hover:opacity-70 transition">
+                  {post.title}
+                </h3>
+              </Link>
 
-                <p className="text-gray-500 text-xs">
-                  {new Date(post.publishedAt).toLocaleDateString()}
-                  {" · "}
-                  {(views[post.slug.current] ?? 0).toLocaleString()} views
-                  {(commentCounts[post.slug.current] ?? 0) > 0 &&
-                    ` · ${formatCommentCount(commentCounts[post.slug.current])}`}
-                </p>
+              <StoryMeta
+                slug={post.slug.current}
+                publishedAt={post.publishedAt}
+                views={views[post.slug.current] ?? 0}
+                likes={likes[post.slug.current] ?? 0}
+                comments={commentCounts[post.slug.current] ?? 0}
+                compact
+              />
+
+              {/* EXCERPT */}
+              <p className="mt-4 text-gray-700 leading-relaxed text-lg">
+                {post.excerpt}
+              </p>
+
+              {/* AUTHOR */}
+              <div className="mt-6">
+                <div>
+                  <p className="text-sm font-medium uppercase tracking-[0.14em] text-[#7a746b]">
+                    {displayAuthorName}
+                  </p>
+                </div>
               </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </section>
 
       {/* FOOTER */}

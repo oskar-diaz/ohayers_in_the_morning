@@ -49,5 +49,5 @@ export default function PostViews({ slug, initialViews }: PostViewsProps) {
     };
   }, [initialViews, slug]);
 
-  return <>{views.toLocaleString()} views</>;
+  return <>{views.toLocaleString()} vistas</>;
 }
