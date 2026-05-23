@@ -1,5 +1,6 @@
 import { client } from "@/sanity/lib/client";
 import { siteName, siteUrl } from "@/lib/site";
+import { urlFor } from "@/sanity/lib/image";
 
 export const revalidate = 1800;
 
@@ -10,6 +11,7 @@ type FeedPost = {
   };
   publishedAt: string;
   excerpt?: string;
+  mainImage?: unknown;
   author?: {
     name?: string;
   };
@@ -24,6 +26,10 @@ function escapeXml(value: string) {
     .replaceAll("'", "&apos;");
 }
 
+function escapeCdata(value: string) {
+  return value.replaceAll("]]>", "]]]]><![CDATA[>");
+}
+
 async function getFeedPosts() {
   return client.fetch<FeedPost[]>(`
     *[_type == "post"] | order(publishedAt desc) {
@@ -31,6 +37,7 @@ async function getFeedPosts() {
       slug,
       publishedAt,
       excerpt,
+      mainImage,
       author->{
         name
       }
@@ -47,9 +54,18 @@ export async function GET() {
     .map((post) => {
       const url = `${siteUrl}/post/${post.slug.current}`;
       const title = escapeXml(post.title);
-      const description = escapeXml(post.excerpt || "");
+      const imageUrl = post.mainImage
+        ? urlFor(post.mainImage).width(1200).height(630).fit("crop").url()
+        : "";
+      const descriptionHtml = `
+        ${imageUrl ? `<p><img src="${imageUrl}" alt="${escapeXml(post.title)}" /></p>` : ""}
+        ${post.excerpt ? `<p>${escapeXml(post.excerpt)}</p>` : ""}
+      `.trim();
       const author = post.author?.name
         ? `<author>${escapeXml(post.author.name)}</author>`
+        : "";
+      const mediaContent = imageUrl
+        ? `<media:content url="${imageUrl}" medium="image" />`
         : "";
 
       return `
@@ -58,7 +74,8 @@ export async function GET() {
           <link>${url}</link>
           <guid>${url}</guid>
           <pubDate>${new Date(post.publishedAt).toUTCString()}</pubDate>
-          <description>${description}</description>
+          <description><![CDATA[${escapeCdata(descriptionHtml)}]]></description>
+          ${mediaContent}
           ${author}
         </item>
       `.trim();
@@ -66,7 +83,7 @@ export async function GET() {
     .join("\n");
 
   const rss = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
   <channel>
     <title>${escapeXml(siteName)}</title>
     <link>${siteUrl}</link>
