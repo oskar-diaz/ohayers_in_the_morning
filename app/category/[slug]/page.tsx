@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import type { SanityImageSource } from "@sanity/image-url";
 
 import { getDisplayAuthorName } from "@/lib/display-author";
 import { getViewsBySlug } from "@/lib/views";
@@ -25,7 +26,7 @@ type CategoryPost = {
   title: string;
   excerpt?: string;
   publishedAt: string;
-  mainImage?: unknown;
+  mainImage?: SanityImageSource;
   slug?: {
     current?: string;
   };
@@ -117,12 +118,18 @@ export default async function CategoryPage({
       {/* POSTS */}
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
         {posts.map((post) => {
-          const displayAuthorName = getDisplayAuthorName(post.slug.current);
+          const postSlug = post.slug?.current;
+
+          if (!postSlug) {
+            return null;
+          }
+
+          const displayAuthorName = getDisplayAuthorName(postSlug);
 
           return (
             <article key={post._id} className="border-b newspaper-border pb-10">
               {/* IMAGE */}
-              <Link href={`/post/${post.slug.current}`}>
+              <Link href={`/post/${postSlug}`}>
                 <div className="relative aspect-[16/10] overflow-hidden mb-5">
                   {post.mainImage && (
                     <Image
@@ -143,7 +150,7 @@ export default async function CategoryPage({
               )}
 
               {/* TITLE */}
-              <Link href={`/post/${post.slug.current}`}>
+              <Link href={`/post/${postSlug}`}>
                 <h2 className="newspaper-title text-[clamp(2rem,3vw,3rem)] font-black leading-[0.95] hover:opacity-70 transition">
                   {post.title}
                 </h2>
@@ -162,7 +169,7 @@ export default async function CategoryPage({
                   <p className="text-gray-500 text-xs">
                     {new Date(post.publishedAt).toLocaleDateString()}
                     {" · "}
-                    {(views[post.slug.current] ?? 0).toLocaleString()} vistas
+                    {(views[postSlug] ?? 0).toLocaleString()} vistas
                   </p>
                 </div>
               </div>
