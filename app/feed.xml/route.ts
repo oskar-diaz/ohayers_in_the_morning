@@ -53,6 +53,7 @@ export async function GET() {
     .filter((post) => post.slug?.current)
     .map((post) => {
       const url = `${siteUrl}/post/${post.slug.current}`;
+      const escapedUrl = escapeXml(url);
       const title = escapeXml(post.title);
       const imageUrl = post.mainImage
         ? urlFor(post.mainImage).width(1200).height(630).fit("crop").url()
@@ -65,14 +66,14 @@ export async function GET() {
         ? `<author>${escapeXml(post.author.name)}</author>`
         : "";
       const mediaContent = imageUrl
-        ? `<media:content url="${imageUrl}" medium="image" />`
+        ? `<media:content url="${escapeXml(imageUrl)}" medium="image" />`
         : "";
 
       return `
         <item>
           <title>${title}</title>
-          <link>${url}</link>
-          <guid>${url}</guid>
+          <link>${escapedUrl}</link>
+          <guid>${escapedUrl}</guid>
           <pubDate>${new Date(post.publishedAt).toUTCString()}</pubDate>
           <description><![CDATA[${escapeCdata(descriptionHtml)}]]></description>
           ${mediaContent}
