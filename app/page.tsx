@@ -1,17 +1,59 @@
-import Link from "next/link";
+import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
+import type { SanityImageSource } from "@sanity/image-url";
+import { cache } from "react";
+
 import StoryLikeButton from "@/app/components/StoryLikeButton";
 import { getCommentCountsBySlug } from "@/lib/comments";
 import { getDisplayAuthorName } from "@/lib/display-author";
 import { getLikesBySlug } from "@/lib/likes";
+import {
+  absoluteUrl,
+  getSanityOgImageUrl,
+  resolveSeoDescription,
+  toJsonLd,
+} from "@/lib/seo";
+import {
+  siteKeywords,
+  siteLocale,
+  siteName,
+} from "@/lib/site";
 import { getViewsBySlug } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
 export const revalidate = 0;
 
-async function getPosts() {
-  return client.fetch(`
+type HomeImage = SanityImageSource & {
+  alt?: string;
+};
+
+type HomeCategory = {
+  title: string;
+  slug?: {
+    current?: string;
+  };
+};
+
+type HomePost = {
+  _id: string;
+  title: string;
+  slug?: {
+    current?: string;
+  };
+  publishedAt: string;
+  excerpt?: string;
+  mainImage?: HomeImage;
+  categories?: HomeCategory[];
+  author?: {
+    name?: string;
+    image?: HomeImage;
+  };
+};
+
+const getPosts = cache(async () => {
+  return client.fetch<HomePost[]>(`
     *[_type == "post"] | order(publishedAt desc) {
       _id,
       title,
@@ -29,15 +71,70 @@ async function getPosts() {
       }
     }
   `);
-}
+});
 
-async function getCategories() {
-  return client.fetch(`
-    *[_type == "category"]{
+const getCategories = cache(async () => {
+  return client.fetch<HomeCategory[]>(`
+    *[_type == "category"] | order(title asc){
       title,
       slug
     }
   `);
+});
+
+function getPostsWithSlug(posts: HomePost[]) {
+  return posts.filter(
+    (post): post is HomePost & { slug: { current: string } } =>
+      Boolean(post.slug?.current),
+  );
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const [posts, categories] = await Promise.all([getPosts(), getCategories()]);
+  const featuredPost = getPostsWithSlug(posts)[0];
+  const description = resolveSeoDescription(
+    featuredPost?.excerpt,
+    "Noticias de Japón, actualidad japonesa, cultura y tendencias desde una mirada editorial propia.",
+  );
+  const imageUrl = getSanityOgImageUrl(featuredPost?.mainImage);
+
+  return {
+    title: "Noticias de Japón, actualidad japonesa y cultura",
+    description,
+    keywords: [
+      ...siteKeywords,
+      "periódico de Japón",
+      "medio sobre Japón",
+      ...categories.map((category) => category.title),
+    ],
+    alternates: {
+      canonical: "/",
+    },
+    openGraph: {
+      type: "website",
+      locale: siteLocale,
+      url: absoluteUrl("/"),
+      siteName,
+      title: `Noticias de Japón | ${siteName}`,
+      description,
+      images: imageUrl
+        ? [
+            {
+              url: imageUrl,
+              width: 1200,
+              height: 630,
+              alt: featuredPost?.title ?? siteName,
+            },
+          ]
+        : undefined,
+    },
+    twitter: {
+      card: imageUrl ? "summary_large_image" : "summary",
+      title: `Noticias de Japón | ${siteName}`,
+      description,
+      images: imageUrl ? [imageUrl] : undefined,
+    },
+  };
 }
 
 function StoryMeta({
@@ -106,27 +203,67 @@ function StoryMeta({
 }
 
 export default async function Home() {
-  const posts = await getPosts();
-  const categories = await getCategories();
-
-  const featured = posts[0];
-  const latest = posts.slice(1);
-  const visiblePosts = featured ? [featured, ...latest] : posts;
-  const visibleSlugs = visiblePosts
-    .map((post: any) => post.slug?.current)
-    .filter((slug: string | undefined): slug is string => Boolean(slug));
+  const [posts, categories] = await Promise.all([getPosts(), getCategories()]);
+  const postsWithSlug = getPostsWithSlug(posts);
+  const featured = postsWithSlug[0];
+  const latest = featured ? postsWithSlug.slice(1) : postsWithSlug;
+  const visiblePosts = featured ? [featured, ...latest] : postsWithSlug;
+  const visibleSlugs = visiblePosts.map((post) => post.slug.current);
+  const categoryLinks = categories.filter(
+    (category): category is HomeCategory & { slug: { current: string } } =>
+      Boolean(category.slug?.current),
+  );
 
   const [views, commentCounts, likes] = await Promise.all([
     getViewsBySlug(visibleSlugs),
     getCommentCountsBySlug(visibleSlugs),
     getLikesBySlug(visibleSlugs),
   ]);
-  const featuredAuthorName = featured?.slug?.current
+  const featuredAuthorName = featured
     ? getDisplayAuthorName(featured.slug.current)
     : null;
+  const featuredPrimaryCategory = featured?.categories?.[0];
+  const homeJsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        name: siteName,
+        alternateName: "Noticias de Japón",
+        url: absoluteUrl("/"),
+        description:
+          "Noticias de Japón, actualidad japonesa y cultura contadas con voz editorial propia.",
+        inLanguage: "es",
+      },
+      {
+        "@type": "CollectionPage",
+        name: `Noticias de Japón | ${siteName}`,
+        url: absoluteUrl("/"),
+        description:
+          "Portada con noticias de Japón, actualidad japonesa, tendencias y cultura.",
+        inLanguage: "es",
+        mainEntity: {
+          "@type": "ItemList",
+          itemListOrder: "https://schema.org/ItemListOrderDescending",
+          numberOfItems: visiblePosts.length,
+          itemListElement: visiblePosts.slice(0, 12).map((post, index) => ({
+            "@type": "ListItem",
+            position: index + 1,
+            url: absoluteUrl(`/post/${post.slug.current}`),
+            name: post.title,
+          })),
+        },
+      },
+    ],
+  };
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: toJsonLd(homeJsonLd) }}
+      />
+
       {/* HEADER */}
       <header className="max-w-7xl mx-auto px-6 py-10 border-b newspaper-border">
         {/* LOGO */}
@@ -137,13 +274,14 @@ export default async function Home() {
                 newspaper-title
                 font-black
                 uppercase
-                leading-[0.9]
+                leading-[0.92]
                 tracking-[-0.055em]
-                whitespace-nowrap
-                text-[clamp(2.8rem,8vw,6.5rem)]
+                text-[clamp(2.7rem,11vw,6.5rem)]
+                md:whitespace-nowrap
               "
             >
-              OHAYERS IN THE MORNING
+              <span className="block md:inline">OHAYERS IN THE</span>
+              <span className="block md:inline md:ml-[0.24em]">MORNING</span>
             </h1>
           </Link>
 
@@ -158,14 +296,19 @@ export default async function Home() {
               font-semibold
             "
           >
-            El periódico a tope de Ikigai
+            El periodico a tope de Ikigai
+          </p>
+
+          <p className="mx-auto mt-4 max-w-3xl text-balance text-sm leading-6 text-[#5f5952] md:text-base">
+            Noticias de Japón, actualidad japonesa, cultura y tendencias
+            contadas con el estilo editorial de Ohayers.
           </p>
         </div>
 
         {/* NAV */}
         <div className="flex justify-center mt-10">
-          <nav className="flex gap-8 uppercase text-sm overflow-x-auto">
-            {categories.map((category: any) => (
+          <nav className="flex max-w-4xl flex-wrap justify-center gap-x-8 gap-y-3 uppercase text-sm">
+            {categoryLinks.map((category) => (
               <Link
                 key={category.slug.current}
                 href={`/category/${category.slug.current}`}
@@ -184,11 +327,11 @@ export default async function Home() {
         <section className="max-w-7xl mx-auto px-6 py-12 grid lg:grid-cols-[1.4fr_1fr] gap-12 border-b newspaper-border">
           {/* IMAGE */}
           <Link href={`/post/${featured.slug.current}`}>
-            <div className="relative h-[420px] md:h-[560px] overflow-hidden bg-[#ece8df] flex items-center justify-center">
+            <div className="relative h-[420px] md:h-[560px] overflow-hidden flex items-center justify-center">
               {featured.mainImage && (
                 <Image
                   src={urlFor(featured.mainImage).url()}
-                  alt={featured.title}
+                  alt={featured.mainImage.alt || featured.title}
                   width={1600}
                   height={1000}
                   priority
@@ -208,13 +351,18 @@ export default async function Home() {
 
           {/* TEXT */}
           <div className="flex flex-col justify-center">
-            {featured.categories?.[0]?.slug?.current && (
-              <Link href={`/category/${featured.categories[0].slug.current}`}>
-                <p className="uppercase text-red-700 font-semibold tracking-wide text-sm mb-4 hover:opacity-60 transition">
-                  {featured.categories[0].title}
+            {featuredPrimaryCategory?.title &&
+              (featuredPrimaryCategory.slug?.current ? (
+                <Link href={`/category/${featuredPrimaryCategory.slug.current}`}>
+                  <p className="uppercase text-red-700 font-semibold tracking-[0.18em] text-sm mb-4 hover:opacity-60 transition">
+                    {featuredPrimaryCategory.title}
+                  </p>
+                </Link>
+              ) : (
+                <p className="uppercase text-red-700 font-semibold tracking-[0.18em] text-sm mb-4">
+                  {featuredPrimaryCategory.title}
                 </p>
-              </Link>
-            )}
+              ))}
 
             <Link href={`/post/${featured.slug.current}`}>
               <h2
@@ -259,7 +407,7 @@ export default async function Home() {
 
       {/* NEWS GRID */}
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
-        {latest.map((post: any) => {
+        {latest.map((post) => {
           const displayAuthorName = getDisplayAuthorName(post.slug.current);
 
           return (
@@ -270,7 +418,7 @@ export default async function Home() {
                   {post.mainImage && (
                     <Image
                       src={urlFor(post.mainImage).url()}
-                      alt={post.title}
+                      alt={post.mainImage.alt || post.title}
                       width={1200}
                       height={800}
                       className="
@@ -333,7 +481,7 @@ export default async function Home() {
       <footer className="border-t newspaper-border mt-20">
         <div className="max-w-7xl mx-auto px-6 py-12 text-center">
           <p className="italic text-xl newspaper-title">
-            ¿¡A qué estamos aquí, copón!? ¿¡A ikigais o a setas?!?
+            ¿¡A que estamos aqui, copon!? ¿¡A ikigais o a setas?!?
           </p>
 
           <div className="flex justify-center gap-8 mt-8 uppercase text-sm">

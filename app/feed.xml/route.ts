@@ -87,7 +87,7 @@ export async function GET() {
   <channel>
     <title>${escapeXml(siteName)}</title>
     <link>${siteUrl}</link>
-    <description>Las ultimas noticias de ${escapeXml(siteName)}</description>
+    <description>Noticias de Japón, actualidad japonesa y cultura en ${escapeXml(siteName)}</description>
     <language>es</language>
     <lastBuildDate>${new Date(buildDate).toUTCString()}</lastBuildDate>
     <atom:link href="${siteUrl}/feed.xml" rel="self" type="application/rss+xml" />

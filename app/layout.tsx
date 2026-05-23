@@ -7,7 +7,14 @@ import { Analytics } from "@vercel/analytics/next";
 import HideOnStudio from "./components/HideOnStudio";
 import SupabaseAuthReturn from "./components/SupabaseAuthReturn";
 import SiteTopBar from "./components/SiteTopBar";
-import { siteName, siteUrl } from "@/lib/site";
+import {
+  siteDescription,
+  siteKeywords,
+  siteLocale,
+  siteName,
+  siteUrl,
+} from "@/lib/site";
+import { absoluteUrl } from "@/lib/seo";
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -22,6 +29,52 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   applicationName: siteName,
+  title: {
+    default: siteName,
+    template: `%s | ${siteName}`,
+  },
+  description: siteDescription,
+  keywords: siteKeywords,
+  authors: [{ name: siteName }],
+  creator: siteName,
+  publisher: siteName,
+  category: "news",
+  classification: "news, satire, opinion",
+  alternates: {
+    canonical: "/",
+    types: {
+      "application/rss+xml": absoluteUrl("/feed.xml"),
+    },
+  },
+  formatDetection: {
+    address: false,
+    email: false,
+    telephone: false,
+  },
+  openGraph: {
+    type: "website",
+    locale: siteLocale,
+    url: siteUrl,
+    siteName,
+    title: siteName,
+    description: siteDescription,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteName,
+    description: siteDescription,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
 };
 
 export default function RootLayout({

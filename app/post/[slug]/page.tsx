@@ -1,29 +1,74 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { PortableText } from "@portabletext/react";
+import type { SanityImageSource } from "@sanity/image-url";
+import type { TypedObject } from "@portabletext/types";
+import { cache } from "react";
+
 import Comments from "@/app/components/Comments";
 import PostShareButtons from "@/app/components/PostShareButtons";
-import { PortableText } from "@portabletext/react";
-
-import { getDisplayAuthorName } from "@/lib/display-author";
 import { getLikes } from "@/lib/likes";
+import {
+  absoluteUrl,
+  getSanityOgImageUrl,
+  resolveSeoDescription,
+  toJsonLd,
+} from "@/lib/seo";
+import {
+  siteDescription,
+  siteLocale,
+  siteName,
+  siteUrl,
+} from "@/lib/site";
 import { getViews } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
-import { siteName, siteUrl } from "@/lib/site";
 import PostLikes from "./PostLikes";
 import PostViews from "./PostViews";
 
 export const revalidate = 0;
 
-async function getPost(slug: string) {
-  return client.fetch(`
-    *[_type == "post" && slug.current == "${slug}"][0]{
+type PostImage = SanityImageSource & {
+  alt?: string;
+};
+
+type PostCategory = {
+  title: string;
+  slug?: {
+    current?: string;
+  };
+};
+
+type Post = {
+  title: string;
+  slug?: {
+    current?: string;
+  };
+  publishedAt: string;
+  excerpt?: string;
+  body?: TypedObject[];
+  mainImage?: PostImage;
+  categories?: PostCategory[];
+  author?: {
+    name?: string;
+    image?: PostImage;
+  };
+  _updatedAt?: string;
+};
+
+const getPost = cache(async (slug: string) => {
+  return client.fetch<Post | null>(
+    `
+    *[_type == "post" && slug.current == $slug][0]{
       title,
+      slug,
       publishedAt,
       excerpt,
       body,
       mainImage,
+      _updatedAt,
       categories[]->{
         title,
         slug
@@ -33,73 +78,79 @@ async function getPost(slug: string) {
         image
       }
     }
-  `);
-}
+  `,
+    { slug },
+  );
+});
 
-/* SEO + SOCIAL SHARE */
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-
   const post = await getPost(slug);
 
   if (!post) {
-    return {};
+    return {
+      title: "Articulo no encontrado",
+      description: siteDescription,
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
   }
 
-  const url = `${siteUrl}/post/${slug}`;
-  const description = post.excerpt || "Tengo el ikigai moreno";
-
-  const imageUrl = post.mainImage
-    ? urlFor(post.mainImage).width(1200).height(630).fit("crop").url()
-    : undefined;
+  const url = absoluteUrl(`/post/${slug}`);
+  const description = resolveSeoDescription(post.excerpt, siteDescription);
+  const imageUrl = getSanityOgImageUrl(post.mainImage);
+  const authorName = post.author?.name?.trim() || siteName;
+  const categoryTitles = post.categories?.map((category) => category.title) ?? [];
 
   return {
-    title: `${post.title} | ${siteName}`,
-
+    title: post.title,
     description,
-
+    keywords: [
+      "noticias de Japón",
+      "actualidad japonesa",
+      ...categoryTitles,
+    ],
+    authors: [{ name: authorName }],
+    creator: authorName,
+    publisher: siteName,
+    category: categoryTitles[0],
     alternates: {
       canonical: url,
     },
-
     openGraph: {
-      title: post.title,
-
-      description,
-
+      type: "article",
+      locale: siteLocale,
       url,
-
       siteName,
-
+      title: post.title,
+      description,
       images: imageUrl
         ? [
             {
               url: imageUrl,
               width: 1200,
               height: 630,
-              type: "image/png",
-              alt: post.title,
+              alt: post.mainImage?.alt || post.title,
             },
           ]
-        : [],
-
-      locale: "es_ES",
-
-      type: "article",
+        : undefined,
+      publishedTime: post.publishedAt,
+      modifiedTime: post._updatedAt || post.publishedAt,
+      authors: [authorName],
+      section: categoryTitles[0],
+      tags: categoryTitles,
     },
-
     twitter: {
-      card: "summary_large_image",
-
+      card: imageUrl ? "summary_large_image" : "summary",
       title: post.title,
-
       description,
-
-      images: imageUrl ? [imageUrl] : [],
+      images: imageUrl ? [imageUrl] : undefined,
     },
   };
 }
@@ -110,29 +161,95 @@ export default async function PostPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-
   const post = await getPost(slug);
 
   if (!post) {
-    return (
-      <main className="p-10">
-        <h1>Pues no fona esto, el ikigai que se ha ido por el orto</h1>
-      </main>
-    );
+    notFound();
   }
 
   const [views, likes] = await Promise.all([getViews(slug), getLikes(slug)]);
-  const displayAuthorName = getDisplayAuthorName(slug);
+  const displayAuthorName = post.author?.name?.trim() || siteName;
+  const canonicalUrl = absoluteUrl(`/post/${slug}`);
+  const description = resolveSeoDescription(post.excerpt, siteDescription);
+  const imageUrl = getSanityOgImageUrl(post.mainImage);
+  const categoryTitle = post.categories?.[0]?.title;
+  const postKeywords = [
+    "noticias de Japón",
+    "actualidad japonesa",
+    ...(post.categories?.map((category) => category.title) ?? []),
+  ];
+  const postJsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          {
+            "@type": "ListItem",
+            position: 1,
+            name: "Inicio",
+            item: absoluteUrl("/"),
+          },
+          ...(categoryTitle && post.categories?.[0]?.slug?.current
+            ? [
+                {
+                  "@type": "ListItem",
+                  position: 2,
+                  name: categoryTitle,
+                  item: absoluteUrl(
+                    `/category/${post.categories[0].slug.current}`,
+                  ),
+                },
+              ]
+            : []),
+          {
+            "@type": "ListItem",
+            position: categoryTitle && post.categories?.[0]?.slug?.current ? 3 : 2,
+            name: post.title,
+            item: canonicalUrl,
+          },
+        ],
+      },
+      {
+        "@type": "NewsArticle",
+        headline: post.title,
+        description,
+        datePublished: post.publishedAt,
+        dateModified: post._updatedAt || post.publishedAt,
+        mainEntityOfPage: canonicalUrl,
+        inLanguage: "es",
+        articleSection: categoryTitle,
+        keywords: postKeywords,
+        image: imageUrl ? [imageUrl] : undefined,
+        author: [
+          {
+            "@type": "Person",
+            name: displayAuthorName,
+          },
+        ],
+        publisher: {
+          "@type": "Organization",
+          name: siteName,
+          url: siteUrl,
+        },
+      },
+    ],
+  };
 
   return (
     <main className="bg-[#f8f6f2] min-h-screen">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: toJsonLd(postJsonLd) }}
+      />
+
       {/* HERO IMAGE */}
       {post.mainImage && (
         <div className="w-full bg-[#ece8df] border-b newspaper-border">
           <div className="max-w-7xl mx-auto px-6 py-10">
             <Image
               src={urlFor(post.mainImage).url()}
-              alt={post.title}
+              alt={post.mainImage.alt || post.title}
               width={1600}
               height={900}
               priority
@@ -181,7 +298,7 @@ export default async function PostPage({
             <div>
               <p className="font-semibold text-lg">{displayAuthorName}</p>
 
-              <p className="text-gray-500 text-sm">Redacción Ohayers</p>
+              <p className="text-gray-500 text-sm">Redaccion Ohayers</p>
             </div>
           </div>
 
@@ -282,13 +399,11 @@ export default async function PostPage({
 
           <div className="clear-both" />
         </div>
+
         {/* SHARE */}
         <div className="mt-24 pt-10 border-t newspaper-border">
           <div className="flex items-center justify-between flex-wrap gap-6">
-            <PostShareButtons
-              title={post.title}
-              url={`${siteUrl}/post/${slug}`}
-            />
+            <PostShareButtons title={post.title} url={canonicalUrl} />
           </div>
         </div>
         <Comments slug={slug} />

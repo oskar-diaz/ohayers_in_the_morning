@@ -171,85 +171,18 @@ async function getTokyoWeather() {
 }
 
 export default async function Weather() {
+  let data: WeatherResponse | null = null;
+
   try {
-    const data = await getTokyoWeather();
-    const current = data.current;
-    const daily = data.daily;
-
-    if (!current || !daily) {
-      throw new Error("Tokyo weather payload is incomplete");
-    }
-
-    const upcomingDays = daily.time.slice(1, 3).map((time, index) => ({
-      time,
-      label: index === 0 ? "明日" : "明後日",
-      weatherCode: daily.weather_code[index + 1] ?? 0,
-      max: Math.round(daily.temperature_2m_max[index + 1] ?? 0),
-      min: Math.round(daily.temperature_2m_min[index + 1] ?? 0),
-    }));
-
-    const descriptor = getWeatherDescriptor(
-      current.weather_code,
-      current.is_day === 1,
-    );
-
-    return (
-      <div className="w-full rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-right shadow-[0_10px_26px_rgba(17,17,17,0.05)] md:h-[82px] md:w-[350px]">
-        <div className="flex items-center gap-2 md:gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ece8df] text-[#111111]">
-            {descriptor.icon}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <p className="text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-[#7a746b]">
-              Tokyo now
-            </p>
-
-            <div className="mt-1 flex items-baseline justify-end gap-2">
-              <p className="text-sm font-semibold text-[#111111]">
-                {Math.round(current.temperature_2m)}°C
-              </p>
-
-              <p className="truncate text-xs text-[#5f5952]">
-                {descriptor.label}
-              </p>
-            </div>
-
-            <p className="mt-1 text-[0.68rem] text-[#7a746b]">
-              Feels like {Math.round(current.apparent_temperature)}°C
-            </p>
-          </div>
-
-          {upcomingDays.length > 0 && (
-            <div className="flex shrink-0 items-center gap-2">
-              {upcomingDays.map((entry) => {
-                const dayDescriptor = getWeatherDescriptor(entry.weatherCode, true);
-
-                return (
-                  <div
-                    key={entry.time}
-                    className="flex min-w-[78px] flex-col rounded-xl bg-[#f3eee5] px-2 py-1.5 text-left"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[0.7rem] font-semibold tracking-[0.04em] text-[#7a746b]">
-                        {entry.label}
-                      </p>
-
-                      <div className="shrink-0 text-[#111111]">{dayDescriptor.icon}</div>
-                    </div>
-
-                    <p className="mt-0.5 text-[0.72rem] font-semibold text-[#111111]">
-                      {entry.max}° / {entry.min}°
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    );
+    data = await getTokyoWeather();
   } catch {
+    data = null;
+  }
+
+  const current = data?.current;
+  const daily = data?.daily;
+
+  if (!current || !daily) {
     return (
       <div className="w-full rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-right shadow-[0_10px_26px_rgba(17,17,17,0.05)] md:h-[82px] md:w-[350px]">
         <p className="text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-[#7a746b]">
@@ -262,4 +195,74 @@ export default async function Weather() {
       </div>
     );
   }
+
+  const upcomingDays = daily.time.slice(1, 3).map((time, index) => ({
+    time,
+    label: index === 0 ? "明日" : "明後日",
+    weatherCode: daily.weather_code[index + 1] ?? 0,
+    max: Math.round(daily.temperature_2m_max[index + 1] ?? 0),
+    min: Math.round(daily.temperature_2m_min[index + 1] ?? 0),
+  }));
+
+  const descriptor = getWeatherDescriptor(
+    current.weather_code,
+    current.is_day === 1,
+  );
+
+  return (
+    <div className="w-full rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-right shadow-[0_10px_26px_rgba(17,17,17,0.05)] md:h-[82px] md:w-[350px]">
+      <div className="flex items-center gap-2 md:gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ece8df] text-[#111111]">
+          {descriptor.icon}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-[#7a746b]">
+            Tokyo now
+          </p>
+
+          <div className="mt-1 flex items-baseline justify-end gap-2">
+            <p className="text-sm font-semibold text-[#111111]">
+              {Math.round(current.temperature_2m)}°C
+            </p>
+
+            <p className="truncate text-xs text-[#5f5952]">
+              {descriptor.label}
+            </p>
+          </div>
+
+          <p className="mt-1 text-[0.68rem] text-[#7a746b]">
+            Feels like {Math.round(current.apparent_temperature)}°C
+          </p>
+        </div>
+
+        {upcomingDays.length > 0 && (
+          <div className="hidden shrink-0 items-center gap-2 md:flex">
+            {upcomingDays.map((entry) => {
+              const dayDescriptor = getWeatherDescriptor(entry.weatherCode, true);
+
+              return (
+                <div
+                  key={entry.time}
+                  className="flex min-w-[78px] flex-col rounded-xl bg-[#f3eee5] px-2 py-1.5 text-left"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[0.7rem] font-semibold tracking-[0.04em] text-[#7a746b]">
+                      {entry.label}
+                    </p>
+
+                    <div className="shrink-0 text-[#111111]">{dayDescriptor.icon}</div>
+                  </div>
+
+                  <p className="mt-0.5 text-[0.72rem] font-semibold text-[#111111]">
+                    {entry.max}° / {entry.min}°
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

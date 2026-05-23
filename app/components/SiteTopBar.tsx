@@ -86,8 +86,15 @@ export default async function SiteTopBar() {
 
   return (
     <div className="border-b newspaper-border">
-      <div className="mx-auto grid max-w-7xl gap-3 px-4 py-4 text-sm sm:px-6 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
-        <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-center shadow-[0_10px_26px_rgba(17,17,17,0.05)] md:h-[82px] md:w-[350px] md:text-left">
+      <div className="mx-auto max-w-7xl px-4 py-4 text-sm sm:px-6">
+        <Link href="/" className="mb-3 block text-center md:hidden">
+          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.34em] text-[#111111] transition hover:opacity-70">
+            OHAYERS IN THE MORNING
+          </p>
+        </Link>
+
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
+          <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-center shadow-[0_10px_26px_rgba(17,17,17,0.05)] md:h-[82px] md:w-[350px] md:text-left">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ece8df] text-[#111111]">
             <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
               <path
@@ -101,7 +108,7 @@ export default async function SiteTopBar() {
           </div>
 
           <div className="min-w-0 flex-1">
-            <p className="text-base font-semibold text-[#111111]">
+            <p className="text-[0.78rem] font-semibold text-[#111111] sm:text-sm md:text-base">
               {formatTokyoDate()}
             </p>
 
@@ -111,16 +118,17 @@ export default async function SiteTopBar() {
               </p>
             )}
           </div>
-        </div>
+          </div>
 
-        <Link href="/" className="justify-self-center">
-          <p className="text-center text-[0.68rem] font-semibold uppercase tracking-[0.34em] text-[#111111] transition hover:opacity-70 sm:text-xs">
-            OHAYERS IN THE MORNING
-          </p>
-        </Link>
+          <Link href="/" className="hidden justify-self-center md:block">
+            <p className="text-center text-[0.68rem] font-semibold uppercase tracking-[0.34em] text-[#111111] transition hover:opacity-70 sm:text-xs">
+              OHAYERS IN THE MORNING
+            </p>
+          </Link>
 
-        <div className="md:justify-self-end">
-          <Weather />
+          <div className="md:justify-self-end">
+            <Weather />
+          </div>
         </div>
       </div>
     </div>
