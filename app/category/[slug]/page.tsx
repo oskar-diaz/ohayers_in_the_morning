@@ -22,7 +22,7 @@ import { getViewsBySlug } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
-export const revalidate = 0;
+export const revalidate = 300;
 
 type Category = {
   title?: string;
@@ -266,6 +266,7 @@ export default async function CategoryPage({
                       src={urlFor(post.mainImage).url()}
                       alt={post.mainImage.alt || post.title}
                       fill
+                      sizes="(min-width: 768px) 50vw, 100vw"
                       className="object-cover hover:scale-[1.02] transition duration-500"
                     />
                   )}

@@ -29,7 +29,7 @@ import { urlFor } from "@/sanity/lib/image";
 import PostLikes from "./PostLikes";
 import PostViews from "./PostViews";
 
-export const revalidate = 0;
+export const revalidate = 300;
 
 type PostImage = SanityImageSource & {
   alt?: string;

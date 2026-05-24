@@ -25,7 +25,7 @@ import { getViewsBySlug } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
-export const revalidate = 0;
+export const revalidate = 300;
 
 const VIDEO_OF_THE_DAY_URL =
   "https://x.com/NicoleA18060980/status/2058340964960539094";
@@ -359,6 +359,7 @@ export default async function Home() {
                   width={1600}
                   height={1000}
                   priority
+                  sizes="(min-width: 1024px) 58vw, 100vw"
                   className="
                     w-full
                     h-full
@@ -445,6 +446,7 @@ export default async function Home() {
                       alt={post.mainImage.alt || post.title}
                       width={1200}
                       height={800}
+                      sizes="(min-width: 768px) 50vw, 100vw"
                       className="
                         w-full
                         h-full
