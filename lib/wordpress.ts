@@ -2,7 +2,7 @@ import { absoluteUrl } from "./seo";
 import { siteName } from "./site";
 
 export const wordpressPostsUrl =
-  "https://www.ikublog.com/wp-json/wp/v2/posts?per_page=24&_fields=id,date,modified,link,slug,title,excerpt,jetpack_featured_media_url";
+  "https://public-api.wordpress.com/rest/v1.1/sites/www.ikublog.com/posts/?number=24";
 
 export const blogCategory = {
   title: "BLOG",
@@ -12,18 +12,21 @@ export const blogCategory = {
 };
 
 type WordpressApiPost = {
-  id: number;
+  ID: number;
   date: string;
   modified?: string;
-  link: string;
+  URL: string;
   slug: string;
-  title?: {
-    rendered?: string;
+  title?: string;
+  excerpt?: string;
+  featured_image?: string;
+  post_thumbnail?: {
+    URL?: string;
   };
-  excerpt?: {
-    rendered?: string;
-  };
-  jetpack_featured_media_url?: string;
+};
+
+type WordpressApiResponse = {
+  posts?: WordpressApiPost[];
 };
 
 export type WordpressPost = {
@@ -60,17 +63,18 @@ export async function getWordpressPosts(): Promise<WordpressPost[]> {
       throw new Error(`Failed to fetch Wordpress posts: ${response.status}`);
     }
 
-    const data = (await response.json()) as WordpressApiPost[];
+    const data = (await response.json()) as WordpressApiResponse;
+    const posts = data.posts || [];
 
-    return data.map((post) => ({
-      id: String(post.id),
-      titleHtml: sanitizeHtml(post.title?.rendered),
-      excerptHtml: cleanWordpressExcerptHtml(post.excerpt?.rendered),
+    return posts.map((post) => ({
+      id: String(post.ID),
+      titleHtml: sanitizeHtml(post.title),
+      excerptHtml: cleanWordpressExcerptHtml(post.excerpt),
       publishedAt: post.date,
       modifiedAt: post.modified || post.date,
-      url: post.link,
+      url: post.URL,
       slug: post.slug,
-      imageUrl: post.jetpack_featured_media_url || undefined,
+      imageUrl: post.featured_image || post.post_thumbnail?.URL || undefined,
     }));
   } catch (error) {
     console.error("Failed to fetch Wordpress posts", error);
