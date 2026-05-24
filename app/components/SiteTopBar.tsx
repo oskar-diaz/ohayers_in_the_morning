@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import Weather from "./Weather";
@@ -85,12 +86,20 @@ export default async function SiteTopBar() {
   const featuredAnniversary = anniversaries[0];
 
   return (
-    <div className="border-b border-[#d93e3e] bg-[#ff4b4b]">
-      <div className="mx-auto max-w-7xl px-4 py-4 text-sm sm:px-6">
+    <div className="relative overflow-hidden border-b border-[#d93e3e] bg-[linear-gradient(135deg,#ff7167_0%,#ff5a58_30%,#ff4b4b_56%,#eb4050_78%,#cc3150_100%)]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,224,224,0.34),rgba(255,224,224,0)_34%),radial-gradient(circle_at_bottom_right,rgba(157,18,45,0.3),rgba(157,18,45,0)_42%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0))]" />
+
+      <div className="relative mx-auto max-w-7xl px-4 py-4 text-sm sm:px-6">
         <Link href="/" className="mb-3 block text-center md:hidden">
-          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.34em] text-white drop-shadow-[0_3px_10px_rgba(90,9,9,0.38)] transition hover:opacity-80">
-            OHAYERS IN THE MORNING
-          </p>
+          <Image
+            src="/logo.png"
+            alt="Ohayers in the Morning"
+            width={320}
+            height={72}
+            className="mx-auto h-auto w-full max-w-[220px] drop-shadow-[0_4px_12px_rgba(90,9,9,0.28)] transition hover:opacity-90"
+            priority
+          />
         </Link>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
@@ -121,9 +130,14 @@ export default async function SiteTopBar() {
           </div>
 
           <Link href="/" className="hidden justify-self-center md:block">
-            <p className="text-center text-[0.68rem] font-semibold uppercase tracking-[0.34em] text-white drop-shadow-[0_3px_10px_rgba(90,9,9,0.38)] transition hover:opacity-80 sm:text-xs">
-              OHAYERS IN THE MORNING
-            </p>
+            <Image
+              src="/logo.png"
+              alt="Ohayers in the Morning"
+              width={360}
+              height={80}
+              className="h-auto w-full max-w-[260px] drop-shadow-[0_4px_12px_rgba(90,9,9,0.28)] transition hover:opacity-90"
+              priority
+            />
           </Link>
 
           <div className="md:justify-self-end">

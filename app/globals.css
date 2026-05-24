@@ -31,6 +31,16 @@ h4 {
   letter-spacing: -0.04em;
 }
 
+.handwritten-title {
+  font-family:
+    "Bradley Hand",
+    "Segoe Print",
+    "Marker Felt",
+    "Chalkboard SE",
+    "Comic Sans MS",
+    cursive;
+}
+
 .newspaper-border {
   border-color: #d6d1c8;
 }

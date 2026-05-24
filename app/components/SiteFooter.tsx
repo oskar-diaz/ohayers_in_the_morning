@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 const footerLinks = [
   {
     href: "http://instagram.com/ikusuki",
@@ -193,10 +195,14 @@ function FooterLinkIcon({
 
 export default function SiteFooter() {
   return (
-    <footer className="mt-20 border-t border-[#d93e3e] bg-[#ff4b4b]">
-      <div className="max-w-7xl mx-auto px-6 py-12 text-center">
-        <p className="mx-auto max-w-4xl text-balance newspaper-title text-[24px] font-black italic leading-[1] tracking-[-0.04em] text-[#ff5858] drop-shadow-[0_6px_18px_rgba(90,9,9,0.4)] md:text-[28px]">
-          ¿¡A que estamos aqui, copon!? ¿¡A ikigais o a setas?!?
+    <footer className="relative mt-20 overflow-hidden border-t border-[#d93e3e] bg-[linear-gradient(135deg,#ff7167_0%,#ff5a58_30%,#ff4b4b_56%,#eb4050_78%,#cc3150_100%)]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,224,224,0.34),rgba(255,224,224,0)_34%),radial-gradient(circle_at_bottom_right,rgba(157,18,45,0.3),rgba(157,18,45,0)_42%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0))]" />
+
+      <div className="relative mx-auto max-w-7xl px-6 py-12 text-center">
+
+        <p className="handwritten-title mx-auto max-w-4xl text-balance text-[19px] font-medium italic leading-[1.05] tracking-[-0.03em] text-[#f2eeee] drop-shadow-[0_6px_18px_rgba(90,9,9,0.4)] md:text-[22px]">
+          ¿¡A que estamos aqui, copón!? ¿¡A ikigais o a setas?!?
         </p>
 
         <div className="mt-10 flex flex-wrap justify-center gap-2.5">
@@ -223,6 +229,26 @@ export default function SiteFooter() {
               </a>
             );
           })}
+        </div>
+
+        <div className="pointer-events-none absolute bottom-3 left-3 hidden sm:block md:bottom-4 md:left-4">
+          <Image
+            src="/darumer.png"
+            alt=""
+            width={92}
+            height={92}
+            className="h-auto w-[72px] opacity-95 drop-shadow-[0_10px_22px_rgba(123,26,26,0.35)] md:w-[92px]"
+          />
+        </div>
+
+        <div className="pointer-events-none absolute bottom-3 right-3 hidden sm:block md:bottom-4 md:right-4">
+          <Image
+            src="/darumerborracher.png"
+            alt=""
+            width={92}
+            height={92}
+            className="h-auto w-[72px] opacity-95 drop-shadow-[0_10px_22px_rgba(123,26,26,0.35)] md:w-[92px]"
+          />
         </div>
       </div>
     </footer>
