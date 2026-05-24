@@ -85,10 +85,10 @@ export default async function SiteTopBar() {
   const featuredAnniversary = anniversaries[0];
 
   return (
-    <div className="border-b newspaper-border">
+    <div className="border-b border-[#d93e3e] bg-[#ff4b4b]">
       <div className="mx-auto max-w-7xl px-4 py-4 text-sm sm:px-6">
         <Link href="/" className="mb-3 block text-center md:hidden">
-          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.34em] text-[#111111] transition hover:opacity-70">
+          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.34em] text-white drop-shadow-[0_3px_10px_rgba(90,9,9,0.38)] transition hover:opacity-80">
             OHAYERS IN THE MORNING
           </p>
         </Link>
@@ -121,7 +121,7 @@ export default async function SiteTopBar() {
           </div>
 
           <Link href="/" className="hidden justify-self-center md:block">
-            <p className="text-center text-[0.68rem] font-semibold uppercase tracking-[0.34em] text-[#111111] transition hover:opacity-70 sm:text-xs">
+            <p className="text-center text-[0.68rem] font-semibold uppercase tracking-[0.34em] text-white drop-shadow-[0_3px_10px_rgba(90,9,9,0.38)] transition hover:opacity-80 sm:text-xs">
               OHAYERS IN THE MORNING
             </p>
           </Link>

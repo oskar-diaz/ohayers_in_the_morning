@@ -5,6 +5,7 @@ import { Playfair_Display, Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 
 import HideOnStudio from "./components/HideOnStudio";
+import SiteFooter from "./components/SiteFooter";
 import SupabaseAuthReturn from "./components/SupabaseAuthReturn";
 import SiteTopBar from "./components/SiteTopBar";
 import {
@@ -90,6 +91,9 @@ export default function RootLayout({
           <SiteTopBar />
         </HideOnStudio>
         {children}
+        <HideOnStudio>
+          <SiteFooter />
+        </HideOnStudio>
         <Analytics />
       </body>
     </html>

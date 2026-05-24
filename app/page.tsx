@@ -5,6 +5,7 @@ import type { SanityImageSource } from "@sanity/image-url";
 import { cache } from "react";
 
 import StoryLikeButton from "@/app/components/StoryLikeButton";
+import XEmbed from "@/app/components/XEmbed";
 import { getCommentCountsBySlug } from "@/lib/comments";
 import { getDisplayAuthorName } from "@/lib/display-author";
 import { getLikesBySlug } from "@/lib/likes";
@@ -24,6 +25,27 @@ import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
 export const revalidate = 0;
+
+const VIDEO_OF_THE_DAY_URL =
+  "https://x.com/NicoleA18060980/status/2058340964960539094";
+const SECOND_FEATURED_VIDEO_URL =
+  "https://x.com/mrjeffu/status/2056223011334918254";
+const THIRD_FEATURED_VIDEO_URL =
+  "https://x.com/jt_mag_os/status/2057425874933395960";
+const FOURTH_FEATURED_VIDEO_URL =
+  "https://x.com/NicoleA18060980/status/2058176545320268140";
+const FIFTH_FEATURED_VIDEO_URL =
+  "https://x.com/jasminogpw/status/2054463896065552560";
+const SIXTH_FEATURED_VIDEO_URL =
+  "https://x.com/douga111www/status/2058171976703934905";
+const SEVENTH_FEATURED_VIDEO_URL =
+  "https://x.com/masanews3/status/2057980095676252187";
+const EIGHTH_FEATURED_VIDEO_URL =
+  "https://x.com/5chmatme/status/2058162044264681637";
+const NINTH_FEATURED_VIDEO_URL =
+  "https://x.com/seisaku_tyosaku/status/2058336725374832771";
+const TENTH_FEATURED_VIDEO_URL =
+  "https://x.com/kkkfff1234k/status/2058249042338214193";
 
 type HomeImage = SanityImageSource & {
   alt?: string;
@@ -201,6 +223,7 @@ function StoryMeta({
     </div>
   );
 }
+
 
 export default async function Home() {
   const [posts, categories] = await Promise.all([getPosts(), getCategories()]);
@@ -477,20 +500,55 @@ export default async function Home() {
         })}
       </section>
 
-      {/* FOOTER */}
-      <footer className="border-t newspaper-border mt-20">
-        <div className="max-w-7xl mx-auto px-6 py-12 text-center">
-          <p className="italic text-xl newspaper-title">
-            ¿¡A que estamos aqui, copon!? ¿¡A ikigais o a setas?!?
-          </p>
+      <section className="max-w-7xl mx-auto px-6 py-14 border-t newspaper-border">
+        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
+          Destacado
+        </p>
 
-          <div className="flex justify-center gap-8 mt-8 uppercase text-sm">
-            <p>Instagram</p>
-            <p>X</p>
-            <p>TikTok</p>
-          </div>
+        <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3 xl:items-start">
+          <XEmbed
+            url={VIDEO_OF_THE_DAY_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={SECOND_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={THIRD_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={FOURTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={FIFTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={SIXTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={SEVENTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={EIGHTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={NINTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={TENTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
         </div>
-      </footer>
+      </section>
+
     </main>
   );
 }
