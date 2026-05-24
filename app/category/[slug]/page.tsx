@@ -244,47 +244,59 @@ export default async function CategoryPage({
         </div>
 
         <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
-          {posts.map((post) => (
-            <article key={post.id} className="border-b newspaper-border pb-10">
-              <a href={post.url} target="_blank" rel="noopener noreferrer">
-                <div className="relative aspect-[16/10] overflow-hidden mb-5 bg-[#ece8df]">
-                  {post.imageUrl ? (
-                    <Image
-                      src={post.imageUrl}
-                      alt=""
-                      fill
-                      sizes="(min-width: 768px) 50vw, 100vw"
-                      className="object-cover hover:scale-[1.02] transition duration-500"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-sm uppercase tracking-[0.18em] text-[#7a746b]">
-                      Ikublog
-                    </div>
-                  )}
-                </div>
-              </a>
+          {posts.length > 0 ? (
+            posts.map((post) => (
+              <article key={post.id} className="border-b newspaper-border pb-10">
+                <a href={post.url} target="_blank" rel="noopener noreferrer">
+                  <div className="relative aspect-[16/10] overflow-hidden mb-5 bg-[#ece8df]">
+                    {post.imageUrl ? (
+                      <Image
+                        src={post.imageUrl}
+                        alt=""
+                        fill
+                        sizes="(min-width: 768px) 50vw, 100vw"
+                        className="object-cover hover:scale-[1.02] transition duration-500"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-sm uppercase tracking-[0.18em] text-[#7a746b]">
+                        Ikublog
+                      </div>
+                    )}
+                  </div>
+                </a>
 
-              <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3">
-                {blogCategory.title}
-              </p>
+                <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3">
+                  {blogCategory.title}
+                </p>
 
-              <a href={post.url} target="_blank" rel="noopener noreferrer">
-                <h2
-                  className="newspaper-title text-[clamp(2rem,3vw,3rem)] font-black leading-[0.95] hover:opacity-70 transition"
-                  dangerouslySetInnerHTML={{ __html: post.titleHtml }}
+                <a href={post.url} target="_blank" rel="noopener noreferrer">
+                  <h2
+                    className="newspaper-title text-[clamp(2rem,3vw,3rem)] font-black leading-[0.95] hover:opacity-70 transition"
+                    dangerouslySetInnerHTML={{ __html: post.titleHtml }}
+                  />
+                </a>
+
+                <p className="text-gray-500 text-xs mt-6">
+                  {formatPublicationDateTime(post.publishedAt)}
+                </p>
+
+                <div
+                  className="mt-4 text-gray-700 leading-relaxed text-lg [&_a]:hidden"
+                  dangerouslySetInnerHTML={{ __html: post.excerptHtml }}
                 />
-              </a>
-
-              <p className="text-gray-500 text-xs mt-6">
-                {formatPublicationDateTime(post.publishedAt)}
+              </article>
+            ))
+          ) : (
+            <div className="md:col-span-2 rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] p-8 text-center shadow-[0_10px_26px_rgba(17,17,17,0.05)]">
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-red-700">
+                Blog temporalmente no disponible
               </p>
-
-              <div
-                className="mt-4 text-gray-700 leading-relaxed text-lg [&_a]:hidden"
-                dangerouslySetInnerHTML={{ __html: post.excerptHtml }}
-              />
-            </article>
-          ))}
+              <p className="mt-4 text-base leading-relaxed text-[#4f4a43]">
+                No hemos podido cargar los posts de WordPress ahora mismo. Intenta
+                recargar dentro de un momento.
+              </p>
+            </div>
+          )}
         </section>
       </main>
     );

@@ -2,7 +2,7 @@ import { absoluteUrl } from "./seo";
 import { siteName } from "./site";
 
 export const wordpressPostsUrl =
-  "https://www.ikublog.com/wp-json/wp/v2/posts?_embed=1&per_page=24";
+  "https://www.ikublog.com/wp-json/wp/v2/posts?per_page=24&_fields=id,date,modified,link,slug,title,excerpt,jetpack_featured_media_url";
 
 export const blogCategory = {
   title: "BLOG",
@@ -49,28 +49,33 @@ function cleanWordpressExcerptHtml(value?: string) {
 }
 
 export async function getWordpressPosts(): Promise<WordpressPost[]> {
-  const response = await fetch(wordpressPostsUrl, {
-    next: {
-      revalidate: 1800,
-    },
-  });
+  try {
+    const response = await fetch(wordpressPostsUrl, {
+      next: {
+        revalidate: 1800,
+      },
+    });
 
-  if (!response.ok) {
-    throw new Error("Failed to fetch Wordpress posts");
+    if (!response.ok) {
+      throw new Error(`Failed to fetch Wordpress posts: ${response.status}`);
+    }
+
+    const data = (await response.json()) as WordpressApiPost[];
+
+    return data.map((post) => ({
+      id: String(post.id),
+      titleHtml: sanitizeHtml(post.title?.rendered),
+      excerptHtml: cleanWordpressExcerptHtml(post.excerpt?.rendered),
+      publishedAt: post.date,
+      modifiedAt: post.modified || post.date,
+      url: post.link,
+      slug: post.slug,
+      imageUrl: post.jetpack_featured_media_url || undefined,
+    }));
+  } catch (error) {
+    console.error("Failed to fetch Wordpress posts", error);
+    return [];
   }
-
-  const data = (await response.json()) as WordpressApiPost[];
-
-  return data.map((post) => ({
-    id: String(post.id),
-    titleHtml: sanitizeHtml(post.title?.rendered),
-    excerptHtml: cleanWordpressExcerptHtml(post.excerpt?.rendered),
-    publishedAt: post.date,
-    modifiedAt: post.modified || post.date,
-    url: post.link,
-    slug: post.slug,
-    imageUrl: post.jetpack_featured_media_url || undefined,
-  }));
 }
 
 export function getWordpressCategoryMetadata(posts: WordpressPost[]) {
