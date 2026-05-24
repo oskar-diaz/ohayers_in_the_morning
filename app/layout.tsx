@@ -3,6 +3,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { Playfair_Display, Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import HideOnStudio from "./components/HideOnStudio";
 import SiteFooter from "./components/SiteFooter";
@@ -95,6 +96,7 @@ export default function RootLayout({
           <SiteFooter />
         </HideOnStudio>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
