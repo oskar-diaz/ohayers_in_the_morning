@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PortableText } from "@portabletext/react";
@@ -9,6 +8,7 @@ import { cache } from "react";
 
 import Comments from "@/app/components/Comments";
 import PostShareButtons from "@/app/components/PostShareButtons";
+import ZoomableImage from "@/app/components/ZoomableImage";
 import { getLikes } from "@/lib/likes";
 import {
   absoluteUrl,
@@ -247,18 +247,14 @@ export default async function PostPage({
       {post.mainImage && (
         <div className="w-full bg-[#ece8df] border-b newspaper-border">
           <div className="max-w-7xl mx-auto px-6 py-10">
-            <Image
+            <ZoomableImage
               src={urlFor(post.mainImage).url()}
               alt={post.mainImage.alt || post.title}
               width={1600}
               height={900}
               priority
-              className="
-          w-full
-          h-auto
-          object-contain
-          max-h-[85vh]
-        "
+              sizes="(min-width: 1280px) 1280px, 100vw"
+              className="w-full h-auto object-contain max-h-[85vh]"
             />
           </div>
         </div>
@@ -323,11 +319,13 @@ export default async function PostPage({
                 image: ({ value }) => (
                   <figure className="md:float-right w-full md:w-[320px] md:ml-8 md:mb-4 my-8">
                     <div className="relative overflow-hidden rounded-sm bg-[#ece8df]">
-                      <Image
+                      <ZoomableImage
                         src={urlFor(value).url()}
                         alt={value.alt || "Article image"}
                         width={800}
                         height={1200}
+                        sizes="(min-width: 768px) 320px, 100vw"
+                        buttonClassName="rounded-sm"
                         className="w-full h-auto object-contain"
                       />
                     </div>
