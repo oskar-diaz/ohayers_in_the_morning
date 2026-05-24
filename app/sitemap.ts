@@ -4,6 +4,7 @@ import type { SanityImageSource } from "@sanity/image-url";
 import { absoluteUrl } from "@/lib/seo";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
+import { blogCategory } from "@/lib/wordpress";
 
 export const revalidate = 1800;
 
@@ -60,8 +61,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "daily",
       priority: 1,
     },
+    {
+      url: absoluteUrl(`/category/${blogCategory.slug}`),
+      lastModified: latestPostDate,
+      changeFrequency: "daily",
+      priority: 0.8,
+    },
     ...categories
-      .filter((category) => category.slug?.current)
+      .filter(
+        (category) =>
+          category.slug?.current && category.slug.current !== blogCategory.slug,
+      )
       .map((category) => ({
         url: absoluteUrl(`/category/${category.slug?.current}`),
         lastModified: category._updatedAt || latestPostDate,

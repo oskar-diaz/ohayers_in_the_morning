@@ -19,6 +19,11 @@ import {
   siteName,
 } from "@/lib/site";
 import { getViewsBySlug } from "@/lib/views";
+import {
+  blogCategory,
+  getWordpressCategoryMetadata,
+  getWordpressPosts,
+} from "@/lib/wordpress";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
@@ -96,6 +101,12 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
+
+  if (slug === blogCategory.slug) {
+    const posts = await getWordpressPosts();
+    return getWordpressCategoryMetadata(posts);
+  }
+
   const [category, posts] = await Promise.all([
     getCategory(slug),
     getCategoryPosts(slug),
@@ -164,6 +175,120 @@ export default async function CategoryPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+
+  if (slug === blogCategory.slug) {
+    const posts = await getWordpressPosts();
+    const categoryUrl = absoluteUrl(`/category/${slug}`);
+    const categoryJsonLd = {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            {
+              "@type": "ListItem",
+              position: 1,
+              name: "Inicio",
+              item: absoluteUrl("/"),
+            },
+            {
+              "@type": "ListItem",
+              position: 2,
+              name: blogCategory.title,
+              item: categoryUrl,
+            },
+          ],
+        },
+        {
+          "@type": "CollectionPage",
+          name: `${blogCategory.title} | ${siteName}`,
+          url: categoryUrl,
+          description: blogCategory.description,
+          inLanguage: "es",
+          mainEntity: {
+            "@type": "ItemList",
+            itemListOrder: "https://schema.org/ItemListOrderDescending",
+            numberOfItems: posts.length,
+            itemListElement: posts.slice(0, 24).map((post, index) => ({
+              "@type": "ListItem",
+              position: index + 1,
+              url: post.url,
+              name: post.titleHtml.replace(/<[^>]+>/g, "").trim(),
+            })),
+          },
+        },
+      ],
+    };
+
+    return (
+      <main className="bg-[#f8f6f2] min-h-screen">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: toJsonLd(categoryJsonLd) }}
+        />
+
+        <div className="max-w-7xl mx-auto px-6 py-10 border-b newspaper-border">
+          <Link href="/">
+            <h1 className="newspaper-title text-5xl font-black">
+              OHAYERS IN THE MORNING
+            </h1>
+          </Link>
+
+          <p className="uppercase text-red-700 tracking-[0.3em] text-xs mt-4">
+            Categoria: {blogCategory.title}
+          </p>
+
+          <p className="mt-5 max-w-3xl text-lg leading-relaxed text-[#4f4a43]">
+            {blogCategory.description}
+          </p>
+        </div>
+
+        <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
+          {posts.map((post) => (
+            <article key={post.id} className="border-b newspaper-border pb-10">
+              <a href={post.url} target="_blank" rel="noopener noreferrer">
+                <div className="relative aspect-[16/10] overflow-hidden mb-5 bg-[#ece8df]">
+                  {post.imageUrl ? (
+                    <Image
+                      src={post.imageUrl}
+                      alt=""
+                      fill
+                      sizes="(min-width: 768px) 50vw, 100vw"
+                      className="object-cover hover:scale-[1.02] transition duration-500"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm uppercase tracking-[0.18em] text-[#7a746b]">
+                      Ikublog
+                    </div>
+                  )}
+                </div>
+              </a>
+
+              <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3">
+                {blogCategory.title}
+              </p>
+
+              <a href={post.url} target="_blank" rel="noopener noreferrer">
+                <h2
+                  className="newspaper-title text-[clamp(2rem,3vw,3rem)] font-black leading-[0.95] hover:opacity-70 transition"
+                  dangerouslySetInnerHTML={{ __html: post.titleHtml }}
+                />
+              </a>
+
+              <p className="text-gray-500 text-xs mt-6">
+                {formatPublicationDateTime(post.publishedAt)}
+              </p>
+
+              <div
+                className="mt-4 text-gray-700 leading-relaxed text-lg [&_a]:hidden"
+                dangerouslySetInnerHTML={{ __html: post.excerptHtml }}
+              />
+            </article>
+          ))}
+        </section>
+      </main>
+    );
+  }
 
   const [category, posts] = await Promise.all([
     getCategory(slug),

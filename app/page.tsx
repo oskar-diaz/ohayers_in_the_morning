@@ -22,6 +22,7 @@ import {
   siteName,
 } from "@/lib/site";
 import { getViewsBySlug } from "@/lib/views";
+import { blogCategory } from "@/lib/wordpress";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
@@ -237,6 +238,12 @@ export default async function Home() {
     (category): category is HomeCategory & { slug: { current: string } } =>
       Boolean(category.slug?.current),
   );
+  const navigationCategories = [
+    ...categoryLinks,
+    ...(!categoryLinks.some((category) => category.slug.current === blogCategory.slug)
+      ? [{ title: blogCategory.title, slug: { current: blogCategory.slug } }]
+      : []),
+  ];
 
   const [views, commentCounts, likes] = await Promise.all([
     getViewsBySlug(visibleSlugs),
@@ -332,7 +339,7 @@ export default async function Home() {
         {/* NAV */}
         <div className="flex justify-center mt-10">
           <nav className="flex max-w-4xl flex-wrap justify-center gap-x-8 gap-y-3 uppercase text-sm">
-            {categoryLinks.map((category) => (
+            {navigationCategories.map((category) => (
               <Link
                 key={category.slug.current}
                 href={`/category/${category.slug.current}`}
