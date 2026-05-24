@@ -9,6 +9,7 @@ export const siteDescription =
 
 export const siteLanguage = "es";
 export const siteLocale = "es_ES";
+export const siteTimeZone = "Asia/Tokyo";
 
 export const siteKeywords = [
   "noticias de Japón",

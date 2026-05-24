@@ -9,6 +9,7 @@ import { cache } from "react";
 import Comments from "@/app/components/Comments";
 import PostShareButtons from "@/app/components/PostShareButtons";
 import ZoomableImage from "@/app/components/ZoomableImage";
+import { formatPublicationDateTime } from "@/lib/format-date";
 import { getLikes } from "@/lib/likes";
 import {
   absoluteUrl,
@@ -301,7 +302,7 @@ export default async function PostPage({
           {/* DATE */}
           <div className="text-right">
             <p className="text-gray-500">
-              {new Date(post.publishedAt).toLocaleDateString()}
+              {formatPublicationDateTime(post.publishedAt)}
             </p>
 
             <p className="text-gray-400 text-sm mt-1">

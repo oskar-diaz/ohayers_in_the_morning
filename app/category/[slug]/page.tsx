@@ -6,6 +6,7 @@ import type { SanityImageSource } from "@sanity/image-url";
 import { cache } from "react";
 
 import { getDisplayAuthorName } from "@/lib/display-author";
+import { formatPublicationDateTime } from "@/lib/format-date";
 import {
   absoluteUrl,
   getSanityOgImageUrl,
@@ -296,7 +297,7 @@ export default async function CategoryPage({
                   <p className="font-medium text-sm">{displayAuthorName}</p>
 
                   <p className="text-gray-500 text-xs">
-                    {new Date(post.publishedAt).toLocaleDateString()}
+                    {formatPublicationDateTime(post.publishedAt)}
                     {" · "}
                     {(views[postSlug] ?? 0).toLocaleString()} vistas
                   </p>

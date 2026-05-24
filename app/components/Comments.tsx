@@ -85,6 +85,22 @@ function normalizeEmail(email: string | null | undefined) {
   return email?.trim().toLowerCase() || "";
 }
 
+function formatCommentTimestamp(createdAt: string) {
+  const date = new Date(createdAt);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export default function Comments({ slug }: { slug: string }) {
   const [comments, setComments] = useState<CommentRecord[]>([]);
   const [user, setUser] = useState<User | null>(null);
@@ -416,7 +432,7 @@ export default function Comments({ slug }: { slug: string }) {
                 <p className="text-[1.02rem] font-semibold">{displayName}</p>
 
                 <p className="mt-1 text-xs uppercase tracking-[0.16em] text-[#7a746b]">
-                  {new Date(comment.created_at).toLocaleDateString()}
+                  {formatCommentTimestamp(comment.created_at)}
                 </p>
               </div>
             </div>

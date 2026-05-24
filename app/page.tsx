@@ -8,6 +8,7 @@ import StoryLikeButton from "@/app/components/StoryLikeButton";
 import XEmbed from "@/app/components/XEmbed";
 import { getCommentCountsBySlug } from "@/lib/comments";
 import { getDisplayAuthorName } from "@/lib/display-author";
+import { formatPublicationDateTime } from "@/lib/format-date";
 import { getLikesBySlug } from "@/lib/likes";
 import {
   absoluteUrl,
@@ -205,7 +206,7 @@ function StoryMeta({
             <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
             <path d="M7.5 3.5v4M16.5 3.5v4M3.5 9.5h17" />
           </svg>
-          <span>{new Date(publishedAt).toLocaleDateString()}</span>
+          <span>{formatPublicationDateTime(publishedAt)}</span>
         </span>
 
         <span className={itemClassName}>
