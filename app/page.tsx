@@ -318,8 +318,10 @@ export default async function Home() {
                 uppercase
                 leading-[0.92]
                 tracking-[-0.055em]
-                text-[clamp(2.7rem,11vw,6.5rem)]
-                md:whitespace-nowrap
+                text-[clamp(2.7rem,11vw,5.8rem)]
+                lg:text-[clamp(3.6rem,7.9vw,5.45rem)]
+                xl:text-[clamp(4.6rem,6.2vw,6.5rem)]
+                xl:whitespace-nowrap
               "
             >
               <span className="block md:inline">OHAYERS IN THE</span>
