@@ -170,7 +170,11 @@ async function getTokyoWeather() {
   return (await response.json()) as WeatherResponse;
 }
 
-export default async function Weather() {
+type WeatherProps = {
+  className?: string;
+};
+
+export default async function Weather({ className }: WeatherProps) {
   let data: WeatherResponse | null = null;
 
   try {
@@ -184,7 +188,11 @@ export default async function Weather() {
 
   if (!current || !daily) {
     return (
-      <div className="w-full rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-right shadow-[0_10px_26px_rgba(17,17,17,0.05)] md:h-[82px] md:w-[350px]">
+      <div
+        className={`w-full rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-right shadow-[0_10px_26px_rgba(17,17,17,0.05)] md:h-[82px] md:w-[350px] ${
+          className ?? ""
+        }`}
+      >
         <p className="text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-[#7a746b]">
           Tokyo weather
         </p>
@@ -210,7 +218,11 @@ export default async function Weather() {
   );
 
   return (
-    <div className="w-full rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-right shadow-[0_10px_26px_rgba(17,17,17,0.05)] md:h-[82px] md:w-[350px]">
+    <div
+      className={`w-full rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-right shadow-[0_10px_26px_rgba(17,17,17,0.05)] md:h-[82px] md:w-[350px] ${
+        className ?? ""
+      }`}
+    >
       <div className="flex items-center gap-2 md:gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ece8df] text-[#111111]">
           {descriptor.icon}
