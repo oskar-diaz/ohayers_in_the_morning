@@ -90,7 +90,7 @@ export default async function SiteTopBar() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,224,224,0.34),rgba(255,224,224,0)_34%),radial-gradient(circle_at_bottom_right,rgba(157,18,45,0.3),rgba(157,18,45,0)_42%)]" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0))]" />
 
-      <div className="relative mx-auto max-w-7xl px-4 py-4 text-sm sm:px-6 md:pt-10 md:pb-6">
+      <div className="relative mx-auto max-w-7xl px-4 py-4 text-sm sm:px-6 md:pt-14 md:pb-8">
         <Link href="/" className="mb-3 block text-center md:hidden">
           <Image
             src="/logo.png"
@@ -132,8 +132,8 @@ export default async function SiteTopBar() {
           <Weather />
         </div>
 
-        <div className="relative hidden md:flex md:min-h-[210px] md:items-center">
-          <div className="absolute left-1/2 top-1/2 z-20 flex w-full max-w-[310px] -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+        <div className="relative hidden md:flex md:min-h-[226px] md:items-center">
+          <div className="absolute left-1/2 top-[56%] z-20 flex w-full max-w-[310px] -translate-x-1/2 -translate-y-1/2 items-center justify-center">
             <Link href="/" className="block w-full">
               <Image
                 src="/logo.png"
