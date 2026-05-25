@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { SanityImageSource } from "@sanity/image-url";
 import { cache } from "react";
 
+import InstagramEmbed from "@/app/components/InstagramEmbed";
 import StoryLikeButton from "@/app/components/StoryLikeButton";
 import XEmbed from "@/app/components/XEmbed";
 import { getCommentCountsBySlug } from "@/lib/comments";
@@ -30,6 +31,8 @@ export const revalidate = 300;
 
 const VIDEO_OF_THE_DAY_URL =
   "https://x.com/HappyPunch/status/2058641063011651951";
+const FEATURED_INSTAGRAM_VIDEO_URL =
+  "https://www.instagram.com/p/DYvlH_mSSD5/";
 const SECOND_FEATURED_VIDEO_URL =
   "https://x.com/naomi2943/status/2058476849613721671";
 const THIRD_FEATURED_VIDEO_URL =
@@ -444,6 +447,23 @@ export default async function Home() {
           </div>
         </section>
       )}
+
+      <section className="max-w-7xl mx-auto px-6 py-12 border-b newspaper-border">
+        <div className="mx-auto max-w-[620px]">
+          <p className="text-center text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
+            Instagram
+          </p>
+
+          <h2 className="mt-4 text-center newspaper-title text-[clamp(2.6rem,5vw,4.8rem)] font-black leading-[0.92] tracking-[-0.045em]">
+            Video destacado
+          </h2>
+
+          <InstagramEmbed
+            url={FEATURED_INSTAGRAM_VIDEO_URL}
+            className="mx-auto mt-8 w-full max-w-[560px]"
+          />
+        </div>
+      </section>
 
       {/* NEWS GRID */}
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
