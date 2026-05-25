@@ -7,8 +7,7 @@ export const wordpressPostsUrl =
 export const blogCategory = {
   title: "BLOG",
   slug: "blog",
-  description:
-    "Editoriales y textos del blog de WordPress enlazados directamente desde Ikublog.",
+  description: "",
 };
 
 type WordpressApiPost = {

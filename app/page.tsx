@@ -29,24 +29,32 @@ import { urlFor } from "@/sanity/lib/image";
 export const revalidate = 300;
 
 const VIDEO_OF_THE_DAY_URL =
-  "https://x.com/NicoleA18060980/status/2058340964960539094";
+  "https://x.com/HappyPunch/status/2058641063011651951";
 const SECOND_FEATURED_VIDEO_URL =
-  "https://x.com/mrjeffu/status/2056223011334918254";
+  "https://x.com/naomi2943/status/2058476849613721671";
 const THIRD_FEATURED_VIDEO_URL =
-  "https://x.com/jt_mag_os/status/2057425874933395960";
+  "https://x.com/Ryo_Saeba_3/status/2058505716227531140";
 const FOURTH_FEATURED_VIDEO_URL =
-  "https://x.com/NicoleA18060980/status/2058176545320268140";
+  "https://x.com/0Ari_/status/2058515430260822494";
 const FIFTH_FEATURED_VIDEO_URL =
-  "https://x.com/jasminogpw/status/2054463896065552560";
+  "https://x.com/NicoleA18060980/status/2058340964960539094";
 const SIXTH_FEATURED_VIDEO_URL =
-  "https://x.com/douga111www/status/2058171976703934905";
+  "https://x.com/mrjeffu/status/2056223011334918254";
 const SEVENTH_FEATURED_VIDEO_URL =
-  "https://x.com/masanews3/status/2057980095676252187";
+  "https://x.com/jt_mag_os/status/2057425874933395960";
 const EIGHTH_FEATURED_VIDEO_URL =
-  "https://x.com/5chmatme/status/2058162044264681637";
+  "https://x.com/NicoleA18060980/status/2058176545320268140";
 const NINTH_FEATURED_VIDEO_URL =
-  "https://x.com/seisaku_tyosaku/status/2058336725374832771";
+  "https://x.com/jasminogpw/status/2054463896065552560";
 const TENTH_FEATURED_VIDEO_URL =
+  "https://x.com/douga111www/status/2058171976703934905";
+const ELEVENTH_FEATURED_VIDEO_URL =
+  "https://x.com/masanews3/status/2057980095676252187";
+const TWELFTH_FEATURED_VIDEO_URL =
+  "https://x.com/5chmatme/status/2058162044264681637";
+const THIRTEENTH_FEATURED_VIDEO_URL =
+  "https://x.com/seisaku_tyosaku/status/2058336725374832771";
+const FOURTEENTH_FEATURED_VIDEO_URL =
   "https://x.com/kkkfff1234k/status/2058249042338214193";
 
 type HomeImage = SanityImageSource & {
@@ -554,6 +562,22 @@ export default async function Home() {
           />
           <XEmbed
             url={TENTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={ELEVENTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={TWELFTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={THIRTEENTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={FOURTEENTH_FEATURED_VIDEO_URL}
             className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
           />
         </div>
