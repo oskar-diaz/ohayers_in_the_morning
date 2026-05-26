@@ -8,9 +8,12 @@ import { supabase } from "@/lib/supabase";
 
 const POLL_INTERVAL_IN_MS = 60_000;
 
-async function fetchPendingCount() {
+async function fetchPendingCount(accessToken: string) {
   const response = await fetch("/api/news-tips/pending", {
     cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
   });
 
   if (!response.ok) {
@@ -20,16 +23,24 @@ async function fetchPendingCount() {
   return (await response.json()) as { pendingCount?: number };
 }
 
-async function acknowledgePending() {
-  await fetch("/api/news-tips/pending", {
+async function acknowledgePending(accessToken: string) {
+  const response = await fetch("/api/news-tips/pending", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
     method: "POST",
   });
+
+  if (!response.ok) {
+    throw new Error("No he podido marcar las alertas como vistas.");
+  }
 }
 
 export default function AdminNewsTipsNotice() {
   const [session, setSession] = useState<Session | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [isAcknowledging, setIsAcknowledging] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -71,24 +82,22 @@ export default function AdminNewsTipsNotice() {
       return;
     }
 
+    const adminAccessToken = accessToken;
     let cancelled = false;
 
     async function loadPending() {
       try {
-        const data = await fetchPendingCount();
+        const data = await fetchPendingCount(adminAccessToken);
         const count = Number(data.pendingCount ?? 0);
 
-        if (cancelled || count <= 0) {
+        if (cancelled || !Number.isFinite(count) || count <= 0) {
           return;
         }
 
-        setPendingCount(count);
+        setPendingCount((currentCount) => Math.max(currentCount, count));
         setIsVisible(true);
-        void acknowledgePending();
       } catch {
-        if (!cancelled) {
-          setIsVisible(false);
-        }
+        return;
       }
     }
 
@@ -103,6 +112,23 @@ export default function AdminNewsTipsNotice() {
       window.clearInterval(intervalId);
     };
   }, [session]);
+
+  async function handleAcknowledge() {
+    const accessToken = session?.access_token;
+
+    if (isAcknowledging || !accessToken) {
+      return;
+    }
+
+    try {
+      setIsAcknowledging(true);
+      await acknowledgePending(accessToken);
+      setIsVisible(false);
+      setPendingCount(0);
+    } finally {
+      setIsAcknowledging(false);
+    }
+  }
 
   if (!session?.user.email || !isAdminEmail(session.user.email) || !isVisible) {
     return null;
@@ -127,9 +153,10 @@ export default function AdminNewsTipsNotice() {
           <button
             type="button"
             className="editorial-cta editorial-cta-dark"
-            onClick={() => setIsVisible(false)}
+            onClick={handleAcknowledge}
+            disabled={isAcknowledging}
           >
-            Entendido
+            {isAcknowledging ? "Marcando..." : "Entendido"}
           </button>
         </div>
       </div>

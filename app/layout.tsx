@@ -44,6 +44,11 @@ export const metadata: Metadata = {
   publisher: siteName,
   category: "news",
   classification: "news, satire, opinion",
+  icons: {
+    icon: [{ url: "/favicon.png", sizes: "1024x1024", type: "image/png" }],
+    shortcut: "/favicon.png",
+    apple: [{ url: "/favicon.png", sizes: "1024x1024", type: "image/png" }],
+  },
   alternates: {
     canonical: "/",
     types: {
