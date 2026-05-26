@@ -5,7 +5,9 @@ import { Playfair_Display, Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
+import { NewsTipFloatingButton } from "./components/NewsTipCta";
 import HideOnStudio from "./components/HideOnStudio";
+import AdminNewsTipsNotice from "./components/AdminNewsTipsNotice";
 import SiteFooter from "./components/SiteFooter";
 import SupabaseAuthReturn from "./components/SupabaseAuthReturn";
 import SiteTopBar from "./components/SiteTopBar";
@@ -90,6 +92,12 @@ export default function RootLayout({
         <SupabaseAuthReturn />
         <HideOnStudio>
           <SiteTopBar />
+        </HideOnStudio>
+        <HideOnStudio>
+          <AdminNewsTipsNotice />
+        </HideOnStudio>
+        <HideOnStudio>
+          <NewsTipFloatingButton />
         </HideOnStudio>
         {children}
         <HideOnStudio>

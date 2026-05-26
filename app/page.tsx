@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { SanityImageSource } from "@sanity/image-url";
 import { cache } from "react";
 
+import NewsTipCta from "@/app/components/NewsTipCta";
 import InstagramEmbed from "@/app/components/InstagramEmbed";
 import StoryLikeButton from "@/app/components/StoryLikeButton";
 import XEmbed from "@/app/components/XEmbed";
@@ -468,6 +469,8 @@ export default async function Home() {
           />
         </div>
       </section>
+
+      <NewsTipCta />
 
       {/* NEWS GRID */}
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">

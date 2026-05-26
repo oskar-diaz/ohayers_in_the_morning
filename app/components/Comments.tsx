@@ -4,9 +4,9 @@ import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { FormEvent, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 
+import { ADMIN_EMAILS, normalizeEmail } from "@/lib/admin";
 import { supabase } from "@/lib/supabase";
 
-const ADMIN_EMAILS = new Set(["koki142@gmail.com"]);
 const EDIT_WINDOW_IN_MS = 15 * 60 * 1000;
 
 type CommentId = number | string;
@@ -79,10 +79,6 @@ function buildCommentTree(records: CommentRecord[]) {
   }
 
   return roots;
-}
-
-function normalizeEmail(email: string | null | undefined) {
-  return email?.trim().toLowerCase() || "";
 }
 
 function formatCommentTimestamp(createdAt: string) {
