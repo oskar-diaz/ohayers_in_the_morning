@@ -31,6 +31,8 @@ export const revalidate = 300;
 
 const VIDEO_OF_THE_DAY_URL =
   "https://x.com/HappyPunch/status/2058641063011651951";
+const LEAD_FEATURED_VIDEO_URL =
+  "https://x.com/asuka_481/status/2059159320374497679";
 const FEATURED_INSTAGRAM_VIDEO_URL =
   "https://www.instagram.com/p/DYvlH_mSSD5/";
 const SECOND_FEATURED_VIDEO_URL =
@@ -546,6 +548,10 @@ export default async function Home() {
         </p>
 
         <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3 xl:items-start">
+          <XEmbed
+            url={LEAD_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
           <XEmbed
             url={VIDEO_OF_THE_DAY_URL}
             className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
