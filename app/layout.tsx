@@ -8,6 +8,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { NewsTipFloatingButton } from "./components/NewsTipCta";
 import HideOnStudio from "./components/HideOnStudio";
 import AdminNewsTipsNotice from "./components/AdminNewsTipsNotice";
+import AuthHeader from "./components/AuthHeader";
 import SiteFooter from "./components/SiteFooter";
 import SupabaseAuthReturn from "./components/SupabaseAuthReturn";
 import SiteTopBar from "./components/SiteTopBar";
@@ -95,6 +96,9 @@ export default function RootLayout({
     <html lang="es">
       <body className={`${playfair.variable} ${inter.variable}`}>
         <SupabaseAuthReturn />
+        <HideOnStudio>
+          <AuthHeader />
+        </HideOnStudio>
         <HideOnStudio>
           <SiteTopBar />
         </HideOnStudio>
