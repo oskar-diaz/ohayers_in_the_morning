@@ -57,19 +57,6 @@ export default function AuthHeader() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!session?.user) {
-      document.documentElement.style.removeProperty("--auth-header-space");
-      return;
-    }
-
-    document.documentElement.style.setProperty("--auth-header-space", "3.75rem");
-
-    return () => {
-      document.documentElement.style.removeProperty("--auth-header-space");
-    };
-  }, [session?.user]);
-
   async function handleSignOut() {
     if (isSigningOut) {
       return;
@@ -97,7 +84,7 @@ export default function AuthHeader() {
   return (
     <header
       aria-label="Sesion"
-      className="fixed left-2 right-2 top-2 z-[80] mx-auto flex h-11 max-w-[420px] items-center justify-between gap-2 rounded-full border border-black/10 bg-[#fffdf8]/95 px-2.5 shadow-[0_10px_28px_rgba(17,17,17,0.14)] backdrop-blur sm:left-auto sm:right-4 sm:mx-0"
+      className="fixed left-2 right-2 top-2 z-[80] flex h-10 max-w-[360px] items-center justify-between gap-2 rounded-full border border-black/10 bg-[#fffdf8]/95 px-2 shadow-[0_10px_28px_rgba(17,17,17,0.14)] backdrop-blur sm:left-4 sm:right-auto sm:w-[min(360px,calc(100vw-2rem))]"
     >
       <div className="flex min-w-0 items-center gap-2">
         {avatarUrl ? (
@@ -105,15 +92,15 @@ export default function AuthHeader() {
           <img
             src={avatarUrl}
             alt=""
-            className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-black/10"
+            className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-black/10"
           />
         ) : (
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#111111] text-xs font-black text-[#fffdf8]">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#111111] text-[0.68rem] font-black text-[#fffdf8]">
             {getInitial(name)}
           </div>
         )}
 
-        <span className="min-w-0 truncate text-sm font-semibold text-[#111111]">
+        <span className="min-w-0 truncate text-[0.82rem] font-semibold text-[#111111]">
           {name}
         </span>
       </div>
@@ -122,7 +109,7 @@ export default function AuthHeader() {
         type="button"
         onClick={handleSignOut}
         disabled={isSigningOut}
-        className="shrink-0 rounded-full border border-[#111111] bg-[#111111] px-3 py-1.5 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-[#fffdf8] transition hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:opacity-55"
+        className="shrink-0 rounded-full border border-[#111111] bg-[#111111] px-2.5 py-1.5 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-[#fffdf8] transition hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:opacity-55"
       >
         {isSigningOut ? "..." : "Salir"}
       </button>

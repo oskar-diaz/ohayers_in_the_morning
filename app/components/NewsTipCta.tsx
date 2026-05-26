@@ -155,15 +155,10 @@ function NewsTipCtaContent({
   return (
     <>
       {showFloatingButton && (
-        <div
-          className="pointer-events-none fixed right-6 z-40 hidden md:block"
-          style={{
-            top: "calc(1.5rem + var(--auth-header-space, 0px))",
-          }}
-        >
+        <div className="pointer-events-none fixed right-4 top-3 z-40 hidden md:block">
           <button
             type="button"
-            className="pointer-events-auto rounded-full border border-[#d6d1c8] bg-[#fffdf8] px-4 py-3 text-[0.72rem] font-bold uppercase tracking-[0.16em] text-[#111111] shadow-[0_16px_34px_rgba(17,17,17,0.12)] transition hover:-translate-y-[1px] hover:shadow-[0_20px_38px_rgba(17,17,17,0.18)]"
+            className="pointer-events-auto rounded-full border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-[0.62rem] font-bold uppercase tracking-[0.12em] text-[#111111] shadow-[0_12px_24px_rgba(17,17,17,0.12)] transition hover:-translate-y-[1px] hover:shadow-[0_16px_28px_rgba(17,17,17,0.18)]"
             onClick={openModal}
           >
             Envia tu noticia
