@@ -231,6 +231,23 @@ export default function SiteFooter() {
           })}
         </div>
 
+        <div className="mt-8 flex items-end justify-between sm:hidden">
+          <Image
+            src="/darumer.png"
+            alt=""
+            width={92}
+            height={92}
+            className="h-auto w-[76px] opacity-95 drop-shadow-[0_10px_22px_rgba(123,26,26,0.35)]"
+          />
+          <Image
+            src="/darumerborracher.png"
+            alt=""
+            width={92}
+            height={92}
+            className="h-auto w-[76px] opacity-95 drop-shadow-[0_10px_22px_rgba(123,26,26,0.35)]"
+          />
+        </div>
+
         <div className="pointer-events-none absolute bottom-3 left-3 hidden sm:block md:bottom-4 md:left-4">
           <Image
             src="/darumer.png"

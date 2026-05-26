@@ -57,6 +57,19 @@ export default function AuthHeader() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!session?.user) {
+      document.documentElement.style.removeProperty("--auth-header-space");
+      return;
+    }
+
+    document.documentElement.style.setProperty("--auth-header-space", "3.75rem");
+
+    return () => {
+      document.documentElement.style.removeProperty("--auth-header-space");
+    };
+  }, [session?.user]);
+
   async function handleSignOut() {
     if (isSigningOut) {
       return;
