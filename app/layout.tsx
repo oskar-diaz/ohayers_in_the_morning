@@ -9,6 +9,7 @@ import { NewsTipFloatingButton } from "./components/NewsTipCta";
 import HideOnStudio from "./components/HideOnStudio";
 import AdminNewsTipsNotice from "./components/AdminNewsTipsNotice";
 import AuthHeader from "./components/AuthHeader";
+import KoFiFloatingLink from "./components/KoFiFloatingLink";
 import SiteFooter from "./components/SiteFooter";
 import SupabaseAuthReturn from "./components/SupabaseAuthReturn";
 import SiteTopBar from "./components/SiteTopBar";
@@ -98,6 +99,9 @@ export default function RootLayout({
         <SupabaseAuthReturn />
         <HideOnStudio>
           <AuthHeader />
+        </HideOnStudio>
+        <HideOnStudio>
+          <KoFiFloatingLink />
         </HideOnStudio>
         <HideOnStudio>
           <SiteTopBar />
