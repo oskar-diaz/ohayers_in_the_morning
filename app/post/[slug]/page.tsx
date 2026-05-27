@@ -9,7 +9,7 @@ import { cache } from "react";
 import Comments from "@/app/components/Comments";
 import PostShareButtons from "@/app/components/PostShareButtons";
 import ZoomableImage from "@/app/components/ZoomableImage";
-import { getDisplayAuthorName } from "@/lib/display-author";
+import { getDisplayAuthor } from "@/lib/display-author";
 import { formatPublicationDateTime } from "@/lib/format-date";
 import { getLikes } from "@/lib/likes";
 import {
@@ -55,6 +55,9 @@ type Post = {
   categories?: PostCategory[];
   author?: {
     name?: string;
+    slug?: {
+      current?: string;
+    };
     image?: PostImage;
   };
   _updatedAt?: string;
@@ -77,6 +80,7 @@ const getPost = cache(async (slug: string) => {
       },
       author->{
         name,
+        slug,
         image
       }
     }
@@ -107,7 +111,7 @@ export async function generateMetadata({
   const url = absoluteUrl(`/post/${slug}`);
   const description = resolveSeoDescription(post.excerpt, siteDescription);
   const imageUrl = getSanityOgImageUrl(post.mainImage);
-  const authorName = getDisplayAuthorName(slug, post.author?.name);
+  const authorName = getDisplayAuthor(slug, post.author).name;
   const categoryTitles = post.categories?.map((category) => category.title) ?? [];
 
   return {
@@ -170,7 +174,7 @@ export default async function PostPage({
   }
 
   const [views, likes] = await Promise.all([getViews(slug), getLikes(slug)]);
-  const displayAuthorName = getDisplayAuthorName(slug, post.author?.name);
+  const displayAuthor = getDisplayAuthor(slug, post.author);
   const canonicalUrl = absoluteUrl(`/post/${slug}`);
   const description = resolveSeoDescription(post.excerpt, siteDescription);
   const imageUrl = getSanityOgImageUrl(post.mainImage);
@@ -226,7 +230,7 @@ export default async function PostPage({
         author: [
           {
             "@type": "Person",
-            name: displayAuthorName,
+            name: displayAuthor.name,
           },
         ],
         publisher: {
@@ -294,7 +298,18 @@ export default async function PostPage({
           {/* AUTHOR */}
           <div>
             <div>
-              <p className="font-semibold text-lg">{displayAuthorName}</p>
+              <p className="font-semibold text-lg">
+                {displayAuthor.slug ? (
+                  <Link
+                    href={`/author/${displayAuthor.slug}`}
+                    className="hover:text-[#111111] hover:underline"
+                  >
+                    {displayAuthor.name}
+                  </Link>
+                ) : (
+                  displayAuthor.name
+                )}
+              </p>
 
               <p className="text-gray-500 text-sm">Redaccion Ohayers</p>
             </div>

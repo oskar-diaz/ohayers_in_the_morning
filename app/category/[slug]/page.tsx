@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import type { SanityImageSource } from "@sanity/image-url";
 import { cache } from "react";
 
-import { getDisplayAuthorName } from "@/lib/display-author";
+import { getDisplayAuthor } from "@/lib/display-author";
 import { formatPublicationDateTime } from "@/lib/format-date";
 import {
   absoluteUrl,
@@ -57,6 +57,9 @@ type CategoryPost = {
   categories?: PostCategory[];
   author?: {
     name?: string;
+    slug?: {
+      current?: string;
+    };
   };
 };
 
@@ -93,7 +96,8 @@ const getCategoryPosts = cache(async (slug: string) => {
         slug
       },
       author->{
-        name
+        name,
+        slug
       }
     }
   `,
@@ -397,10 +401,7 @@ export default async function CategoryPage({
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
         {validPosts.map((post) => {
           const postSlug = post.slug.current;
-          const displayAuthorName = getDisplayAuthorName(
-            postSlug,
-            post.author?.name,
-          );
+          const displayAuthor = getDisplayAuthor(postSlug, post.author);
 
           return (
             <article key={post._id} className="border-b newspaper-border pb-10">
@@ -441,7 +442,18 @@ export default async function CategoryPage({
               {/* AUTHOR */}
               <div className="mt-6">
                 <div>
-                  <p className="font-medium text-sm">{displayAuthorName}</p>
+                  <p className="font-medium text-sm">
+                    {displayAuthor.slug ? (
+                      <Link
+                        href={`/author/${displayAuthor.slug}`}
+                        className="hover:text-[#111111] hover:underline"
+                      >
+                        {displayAuthor.name}
+                      </Link>
+                    ) : (
+                      displayAuthor.name
+                    )}
+                  </p>
 
                   <p className="text-gray-500 text-xs">
                     {formatPublicationDateTime(post.publishedAt)}

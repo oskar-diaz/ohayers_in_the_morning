@@ -9,7 +9,7 @@ import InstagramEmbed from "@/app/components/InstagramEmbed";
 import StoryLikeButton from "@/app/components/StoryLikeButton";
 import XEmbed from "@/app/components/XEmbed";
 import { getCommentCountsBySlug } from "@/lib/comments";
-import { getDisplayAuthorName } from "@/lib/display-author";
+import { getDisplayAuthor } from "@/lib/display-author";
 import { formatPublicationDateTime } from "@/lib/format-date";
 import { getLikesBySlug } from "@/lib/likes";
 import {
@@ -86,6 +86,9 @@ type HomePost = {
   categories?: HomeCategory[];
   author?: {
     name?: string;
+    slug?: {
+      current?: string;
+    };
     image?: HomeImage;
   };
 };
@@ -105,6 +108,7 @@ const getPosts = cache(async () => {
       },
       author->{
         name,
+        slug,
         image
       }
     }
@@ -264,8 +268,8 @@ export default async function Home() {
     getCommentCountsBySlug(visibleSlugs),
     getLikesBySlug(visibleSlugs),
   ]);
-  const featuredAuthorName = featured
-    ? getDisplayAuthorName(featured.slug.current, featured.author?.name)
+  const featuredAuthor = featured
+    ? getDisplayAuthor(featured.slug.current, featured.author)
     : null;
   const featuredPrimaryCategory = featured?.categories?.[0];
   const homeJsonLd = {
@@ -445,7 +449,16 @@ export default async function Home() {
             <div className="mt-10">
               <div>
                 <p className="text-sm font-medium uppercase tracking-[0.14em] text-[#7a746b]">
-                  {featuredAuthorName}
+                  {featuredAuthor?.slug ? (
+                    <Link
+                      href={`/author/${featuredAuthor.slug}`}
+                      className="hover:text-[#111111] hover:underline"
+                    >
+                      {featuredAuthor.name}
+                    </Link>
+                  ) : (
+                    featuredAuthor?.name
+                  )}
                 </p>
               </div>
             </div>
@@ -475,10 +488,7 @@ export default async function Home() {
       {/* NEWS GRID */}
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
         {latest.map((post) => {
-          const displayAuthorName = getDisplayAuthorName(
-            post.slug.current,
-            post.author?.name,
-          );
+          const displayAuthor = getDisplayAuthor(post.slug.current, post.author);
 
           return (
             <article key={post._id} className="border-b newspaper-border pb-10">
@@ -539,7 +549,16 @@ export default async function Home() {
               <div className="mt-6">
                 <div>
                   <p className="text-sm font-medium uppercase tracking-[0.14em] text-[#7a746b]">
-                    {displayAuthorName}
+                    {displayAuthor.slug ? (
+                      <Link
+                        href={`/author/${displayAuthor.slug}`}
+                        className="hover:text-[#111111] hover:underline"
+                      >
+                        {displayAuthor.name}
+                      </Link>
+                    ) : (
+                      displayAuthor.name
+                    )}
                   </p>
                 </div>
               </div>
