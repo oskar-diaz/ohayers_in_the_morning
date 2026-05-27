@@ -39,6 +39,9 @@ const LEAD_FEATURED_VIDEO_URL =
   "https://x.com/asuka_481/status/2059159320374497679";
 const FEATURED_INSTAGRAM_VIDEO_URL =
   "https://www.instagram.com/p/DYvlH_mSSD5/";
+const IKULIBRO_AMAZON_URL =
+  "https://www.amazon.es/Afinando-sue%C3%B1o-ikulibro-Oskar-D%C3%ADaz-ebook/dp/B0GM93MYKH/ref=tmm_kin_swatch_0?_encoding=UTF8&dib_tag=se&dib=eyJ2IjoiMSJ9.GagX4K2VHCp3osrR7eFQMA.uTGTdUJ2JbLALboZOZ2uaS0AHGMQLs9K-78MsCJ_3Z4&qid=1779925756&sr=8-1";
+const IKULIBRO_SITE_URL = "https://ikulibro.ikublog.com/reviews";
 const SECOND_FEATURED_VIDEO_URL =
   "https://x.com/naomi2943/status/2058476849613721671";
 const THIRD_FEATURED_VIDEO_URL =
@@ -876,6 +879,58 @@ export default async function Home() {
           </div>
         </section>
       )}
+
+      <section className="max-w-7xl mx-auto px-6 py-14 border-t newspaper-border">
+        <div className="grid gap-10 lg:grid-cols-[minmax(260px,0.72fr)_1fr] lg:items-center">
+          <a
+            href={IKULIBRO_AMAZON_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block"
+          >
+            <div className="relative mx-auto aspect-[3/4] max-w-[360px] overflow-hidden bg-[#ece8df] shadow-[0_18px_42px_rgba(17,17,17,0.14)] transition group-hover:shadow-[0_24px_56px_rgba(17,17,17,0.2)]">
+              <Image
+                src="/ikulibro.png"
+                alt="Portada de Afinando un sueño, el ikulibro"
+                fill
+                sizes="(min-width: 1024px) 28vw, 80vw"
+                className="object-contain p-4 transition duration-500 group-hover:scale-[1.02]"
+              />
+            </div>
+          </a>
+
+          <div>
+            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
+              Libro
+            </p>
+            <h2 className="mt-4 max-w-3xl newspaper-title text-[clamp(2.6rem,5.6vw,5rem)] font-black leading-[0.92] tracking-[-0.045em]">
+              Afinando un sueño, el ikulibro
+            </h2>
+            <p className="mt-6 max-w-2xl text-xl leading-8 text-[#4f4a43]">
+              Durante todo el mes de Mayo, la edición Kindle del libro está a
+              2€ en Amazon España.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <a
+                href={IKULIBRO_AMAZON_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex border border-[#111111] bg-[#111111] px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition hover:bg-red-700 hover:border-red-700"
+              >
+                Ver edición Kindle
+              </a>
+              <a
+                href={IKULIBRO_SITE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex border border-[#111111] bg-transparent px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-[#111111] transition hover:border-red-700 hover:text-red-700"
+              >
+                Reseñas del libro
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="max-w-7xl mx-auto px-6 py-14 border-t newspaper-border">
         <p className="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
