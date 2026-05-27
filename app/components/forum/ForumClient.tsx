@@ -262,7 +262,7 @@ function getForumTagAttribute(tag: string, name: string) {
   );
   const match = tag.match(pattern);
 
-  return match?.[1] ?? match?.[2] ?? match?.[3] ?? "";
+  return decodeForumHtmlEntities(match?.[1] ?? match?.[2] ?? match?.[3] ?? "");
 }
 
 function getForumTextAlignAttribute(tag: string) {
@@ -281,6 +281,17 @@ function escapeForumHtml(value: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function decodeForumHtmlEntities(value: string) {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&amp;/gi, "&");
 }
 
 function escapeForumAttribute(value: string) {
@@ -523,12 +534,13 @@ function renderForumTextSegment(
   renderSmilies: boolean,
   linkify: boolean,
 ) {
+  const decodedValue = decodeForumHtmlEntities(value);
   let output = "";
   let cursor = 0;
 
-  for (const match of linkify ? value.matchAll(FORUM_URL_PATTERN) : []) {
+  for (const match of linkify ? decodedValue.matchAll(FORUM_URL_PATTERN) : []) {
     const index = match.index ?? 0;
-    const textBeforeUrl = value.slice(cursor, index);
+    const textBeforeUrl = decodedValue.slice(cursor, index);
     const url = match[0];
 
     output += renderSmilies
@@ -538,7 +550,7 @@ function renderForumTextSegment(
     cursor = index + url.length;
   }
 
-  const rest = value.slice(cursor);
+  const rest = decodedValue.slice(cursor);
 
   output += renderSmilies ? renderForumSmiliesToHtml(rest) : escapeForumHtml(rest);
 
