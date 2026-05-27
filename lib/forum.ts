@@ -410,7 +410,7 @@ export function slugifyForumValue(value: string) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 72);
 
-  return slug || "hilo";
+  return slug || "post";
 }
 
 export function buildForumPostTree(records: ForumPost[]) {

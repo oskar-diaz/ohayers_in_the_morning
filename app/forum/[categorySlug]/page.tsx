@@ -20,7 +20,7 @@ export async function generateMetadata({
     },
     openGraph: {
       title: `${title} | ${siteName}`,
-      description: "Hilos y respuestas de la comunidad de Ohayers.",
+      description: "Posts y respuestas de la comunidad de Ohayers.",
       url: absoluteUrl(`/forum/${categorySlug}`),
       siteName,
       type: "website",

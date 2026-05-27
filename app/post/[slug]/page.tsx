@@ -269,13 +269,19 @@ export default async function PostPage({
       {/* ARTICLE */}
       <article className="max-w-5xl mx-auto px-6 py-16">
         {/* CATEGORY */}
-        {post.categories?.[0]?.slug?.current && (
-          <Link href={`/category/${post.categories[0].slug.current}`}>
-            <p className="uppercase text-red-700 font-semibold tracking-wide text-sm mb-5 hover:opacity-60 transition">
+        <div className="mb-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold uppercase tracking-wide text-red-700">
+          {post.categories?.[0]?.slug?.current && (
+            <Link
+              href={`/category/${post.categories[0].slug.current}`}
+              className="hover:opacity-60 transition"
+            >
               {post.categories[0].title}
-            </p>
+            </Link>
+          )}
+          <Link href="/forum" className="hover:opacity-60 transition">
+            Foros
           </Link>
-        )}
+        </div>
 
         {/* TITLE */}
         <h1 className="text-5xl md:text-7xl font-black leading-none newspaper-title">

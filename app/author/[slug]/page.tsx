@@ -281,13 +281,19 @@ export default async function AuthorPage({
                 </div>
               </Link>
 
-              {post.categories?.[0]?.slug?.current && (
-                <Link href={`/category/${post.categories[0].slug.current}`}>
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:opacity-60">
+              <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold uppercase tracking-wide text-red-700">
+                {post.categories?.[0]?.slug?.current && (
+                  <Link
+                    href={`/category/${post.categories[0].slug.current}`}
+                    className="transition hover:opacity-60"
+                  >
                     {post.categories[0].title}
-                  </p>
+                  </Link>
+                )}
+                <Link href="/forum" className="transition hover:opacity-60">
+                  Foros
                 </Link>
-              )}
+              </div>
 
               <Link href={`/post/${postSlug}`}>
                 <h3 className="newspaper-title text-[clamp(2rem,3vw,3rem)] font-black leading-[0.95] transition hover:opacity-70">

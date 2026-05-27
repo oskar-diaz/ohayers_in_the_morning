@@ -244,9 +244,12 @@ export default async function CategoryPage({
             </h1>
           </Link>
 
-          <p className="uppercase text-red-700 tracking-[0.3em] text-xs mt-4">
-            Categoria: {blogCategory.title}
-          </p>
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs uppercase tracking-[0.3em] text-red-700">
+            <p>Categoria: {blogCategory.title}</p>
+            <Link href="/forum" className="hover:opacity-60 transition">
+              Foros
+            </Link>
+          </div>
 
           <p className="mt-5 max-w-3xl text-lg leading-relaxed text-[#4f4a43]">
             {blogCategory.description}
@@ -275,9 +278,12 @@ export default async function CategoryPage({
                   </div>
                 </a>
 
-                <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3">
-                  {blogCategory.title}
-                </p>
+                <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold uppercase tracking-wide text-red-700">
+                  <p>{blogCategory.title}</p>
+                  <Link href="/forum" className="hover:opacity-60 transition">
+                    Foros
+                  </Link>
+                </div>
 
                 <a href={post.url} target="_blank" rel="noopener noreferrer">
                   <h2
@@ -386,9 +392,12 @@ export default async function CategoryPage({
           </h1>
         </Link>
 
-        <p className="uppercase text-red-700 tracking-[0.3em] text-xs mt-4">
-          Categoria: {category.title}
-        </p>
+        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs uppercase tracking-[0.3em] text-red-700">
+          <p>Categoria: {category.title}</p>
+          <Link href="/forum" className="hover:opacity-60 transition">
+            Foros
+          </Link>
+        </div>
 
         {category.description && (
           <p className="mt-5 max-w-3xl text-lg leading-relaxed text-[#4f4a43]">
@@ -421,11 +430,12 @@ export default async function CategoryPage({
               </Link>
 
               {/* CATEGORY */}
-              {post.categories?.[0] && (
-                <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3">
-                  {post.categories[0].title}
-                </p>
-              )}
+              <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold uppercase tracking-wide text-red-700">
+                {post.categories?.[0] && <p>{post.categories[0].title}</p>}
+                <Link href="/forum" className="hover:opacity-60 transition">
+                  Foros
+                </Link>
+              </div>
 
               {/* TITLE */}
               <Link href={`/post/${postSlug}`}>

@@ -369,6 +369,11 @@ export default async function Home() {
                 </p>
               </Link>
             ))}
+            <Link href="/forum">
+              <p className="hover:opacity-60 transition cursor-pointer whitespace-nowrap">
+                Foros
+              </p>
+            </Link>
           </nav>
         </div>
       </header>

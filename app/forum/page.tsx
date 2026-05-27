@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: `Foro | ${siteName}`,
     description:
-      "Categorías, hilos y respuestas de la comunidad de Ohayers in the Morning.",
+      "Categorías, posts y respuestas de la comunidad de Ohayers in the Morning.",
     url: absoluteUrl("/forum"),
     siteName,
     type: "website",

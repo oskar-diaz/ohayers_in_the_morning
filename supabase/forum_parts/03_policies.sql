@@ -95,19 +95,17 @@ with check (
 );
 
 drop policy if exists "Admins moderate forum topics" on public.forum_topics;
-create policy "Admins moderate forum topics"
-on public.forum_topics
-for update
-to authenticated
-using (public.forum_is_admin())
-with check (public.forum_is_admin());
+create policy "Admins moderate forum topics" on public.forum_topics
+for update to authenticated using (public.forum_is_admin()) with check (public.forum_is_admin());
+
+drop policy if exists "Authors update forum topic content" on public.forum_topics;
+create policy "Authors update forum topic content" on public.forum_topics
+for update to authenticated using (author_id = auth.uid() and hidden_at is null) with check (author_id = auth.uid() and hidden_at is null);
 
 drop policy if exists "Authors and admins delete forum topics" on public.forum_topics;
-create policy "Authors and admins delete forum topics"
-on public.forum_topics
-for delete
-to authenticated
-using (author_id = auth.uid() or public.forum_is_admin());
+drop policy if exists "Admins delete forum topics" on public.forum_topics;
+create policy "Admins delete forum topics" on public.forum_topics
+for delete to authenticated using (public.forum_is_admin());
 
 drop policy if exists "Visible forum posts are public" on public.forum_posts;
 create policy "Visible forum posts are public"
@@ -138,12 +136,12 @@ with check (
 );
 
 drop policy if exists "Authors and admins update forum posts" on public.forum_posts;
-create policy "Authors and admins update forum posts"
-on public.forum_posts
-for update
-to authenticated
-using (author_id = auth.uid() or public.forum_is_admin())
-with check (author_id = auth.uid() or public.forum_is_admin());
+create policy "Authors and admins update forum posts" on public.forum_posts
+for update to authenticated using (author_id = auth.uid() or public.forum_is_admin()) with check (author_id = auth.uid() or public.forum_is_admin());
+
+drop policy if exists "Topic authors update opening forum posts" on public.forum_posts;
+create policy "Topic authors update opening forum posts" on public.forum_posts
+for update to authenticated using (parent_id is null and hidden_at is null and exists (select 1 from public.forum_topics where forum_topics.id = topic_id and forum_topics.author_id = auth.uid())) with check (parent_id is null and hidden_at is null and exists (select 1 from public.forum_topics where forum_topics.id = topic_id and forum_topics.author_id = auth.uid()));
 
 drop policy if exists "Admins delete forum posts" on public.forum_posts;
 drop policy if exists "Authors and admins delete forum posts" on public.forum_posts;

@@ -505,7 +505,7 @@ export default function Comments({ slug }: { slug: string }) {
 
             <AlertDialog.Description className="mt-3 text-[1rem] leading-7 text-[#4f4a44]">
               Esta accion borrara tu comentario
-              {commentPendingDelete?.parent_id ? " y lo sacara del hilo." : "."}
+              {commentPendingDelete?.parent_id ? " y lo sacará del post." : "."}
             </AlertDialog.Description>
 
             <div className="mt-6 flex flex-wrap items-center justify-end gap-3">

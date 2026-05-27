@@ -14,13 +14,13 @@ export async function generateMetadata({
 
   return {
     title,
-    description: "Hilo del foro de Ohayers in the Morning.",
+    description: "Post del foro de Ohayers in the Morning.",
     alternates: {
       canonical: absoluteUrl(`/forum/${categorySlug}/${topicSlug}`),
     },
     openGraph: {
       title: `${title} | ${siteName}`,
-      description: "Hilo y respuestas de la comunidad de Ohayers.",
+      description: "Post y respuestas de la comunidad de Ohayers.",
       url: absoluteUrl(`/forum/${categorySlug}/${topicSlug}`),
       siteName,
       type: "article",

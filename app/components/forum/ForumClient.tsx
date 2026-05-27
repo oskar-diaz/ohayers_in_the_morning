@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   Bold,
   Image as ImageIcon,
   Italic,
@@ -18,7 +21,7 @@ import {
   Underline,
   Undo2,
 } from "lucide-react";
-import { mergeAttributes, Node } from "@tiptap/core";
+import { Extension, mergeAttributes, Node } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -66,10 +69,25 @@ type ForumCategorySummary = ForumCategory & {
   topicCount: number;
 };
 
+type ForumTopicPreview = {
+  content: string;
+  thumbnailUrl: string | null;
+};
+
+type ForumTextAlign = "left" | "center" | "right";
+
 type ProfileFormState = {
   bio: string;
   displayName: string;
 };
+
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    forumTextAlign: {
+      setForumTextAlign: (alignment: ForumTextAlign) => ReturnType;
+    };
+  }
+}
 
 const ALLOWED_FORUM_TAGS = new Set([
   "a",
@@ -95,7 +113,20 @@ const FORUM_IMAGE_MIME_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
+const FORUM_TEXT_ALIGNMENTS = new Set<ForumTextAlign>([
+  "left",
+  "center",
+  "right",
+]);
+const FORUM_TEXT_ALIGN_TAGS = new Set(["blockquote", "div", "li", "p"]);
 const FORUM_URL_PATTERN = /https?:\/\/[^\s<]+/g;
+
+function isForumTextAlign(value: unknown): value is ForumTextAlign {
+  return (
+    typeof value === "string" &&
+    FORUM_TEXT_ALIGNMENTS.has(value as ForumTextAlign)
+  );
+}
 
 function isGoogleUser(user: User | null) {
   if (!user) {
@@ -132,8 +163,38 @@ function getTopicUrl(topic: ForumTopic, categories: ForumCategorySummary[]) {
   return category ? `/forum/${category.slug}/${topic.slug}` : "/forum";
 }
 
+function getForumCategoryLatestTopicTime(category: ForumCategorySummary) {
+  const value = category.latestTopic?.last_post_at;
+  const time = value ? Date.parse(value) : 0;
+
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function getForumIndexCategories(categories: ForumCategorySummary[]) {
+  return [...categories].sort((firstCategory, secondCategory) => {
+    const firstTime = getForumCategoryLatestTopicTime(firstCategory);
+    const secondTime = getForumCategoryLatestTopicTime(secondCategory);
+
+    if (firstTime !== secondTime) {
+      return secondTime - firstTime;
+    }
+
+    if (firstCategory.topicCount !== secondCategory.topicCount) {
+      return secondCategory.topicCount - firstCategory.topicCount;
+    }
+
+    return firstCategory.sort_order - secondCategory.sort_order;
+  });
+}
+
 function getPlainExcerpt(value: string) {
   return getForumContentText(value).replace(/\s+/g, " ").trim().slice(0, 220);
+}
+
+function getForumPreviewText(value: string) {
+  const text = getForumContentText(value).replace(/\s+/g, " ").trim();
+
+  return text.length > 180 ? `${text.slice(0, 177).trim()}...` : text;
 }
 
 function formatForumCount(count: number, singular: string, plural: string) {
@@ -158,6 +219,15 @@ function getForumTagAttribute(tag: string, name: string) {
   const match = tag.match(pattern);
 
   return match?.[1] ?? match?.[2] ?? match?.[3] ?? "";
+}
+
+function getForumTextAlignAttribute(tag: string) {
+  const style = getForumTagAttribute(tag, "style");
+  const alignment = style
+    .match(/(?:^|;)\s*text-align\s*:\s*(left|center|right)\s*(?:;|$)/i)?.[1]
+    ?.toLowerCase();
+
+  return isForumTextAlign(alignment) ? ` style="text-align: ${alignment}"` : "";
 }
 
 function escapeForumHtml(value: string) {
@@ -227,6 +297,18 @@ function normalizeForumImageUrl(value: string) {
   } catch {
     return "";
   }
+}
+
+function getForumContentThumbnailUrl(value: string) {
+  for (const match of value.matchAll(/<img\b[^>]*>/gi)) {
+    const src = normalizeForumImageUrl(getForumTagAttribute(match[0], "src"));
+
+    if (src) {
+      return src;
+    }
+  }
+
+  return null;
 }
 
 function getForumImageExtension(file: File) {
@@ -311,6 +393,63 @@ const ForumImageExtension = Node.create({
   },
 });
 
+const ForumTextAlignExtension = Extension.create<{
+  types: string[];
+}>({
+  name: "forumTextAlign",
+
+  addOptions() {
+    return {
+      types: ["paragraph", "blockquote"],
+    };
+  },
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          textAlign: {
+            default: null,
+            parseHTML: (element) => {
+              const alignment = element.style.textAlign.toLowerCase();
+
+              return isForumTextAlign(alignment) ? alignment : null;
+            },
+            renderHTML: (attributes) => {
+              const alignment = attributes.textAlign;
+
+              return isForumTextAlign(alignment)
+                ? { style: `text-align: ${alignment}` }
+                : {};
+            },
+          },
+        },
+      },
+    ];
+  },
+
+  addCommands() {
+    return {
+      setForumTextAlign:
+        (alignment) =>
+        ({ commands }) => {
+          if (!isForumTextAlign(alignment)) {
+            return false;
+          }
+
+          return this.options.types
+            .map((type) =>
+              commands.updateAttributes(type, {
+                textAlign: alignment,
+              }),
+            )
+            .some(Boolean);
+        },
+    };
+  },
+});
+
 function renderForumSmiliesToHtml(value: string) {
   return value.split(FORUM_SMILIE_PATTERN).map((part) => {
     const smilie = FORUM_SMILIE_MAP[part];
@@ -323,7 +462,7 @@ function renderForumSmiliesToHtml(value: string) {
           smilie.label,
         )}" title="${escapeForumAttribute(
           part,
-        )}" class="mx-0.5 inline-block max-h-10 w-auto -translate-y-[2px] align-middle object-contain" />`;
+        )}" class="forum-smilie inline-block h-auto max-h-10 w-auto -translate-y-[2px] align-middle object-contain" />`;
       }
 
       return `<span class="inline-block -translate-y-px font-mono text-[0.92em]" aria-label="${escapeForumAttribute(
@@ -424,6 +563,8 @@ function sanitizeForumHtml(value: string, renderSmilies: boolean) {
     }
 
     const normalizedTagName = tagName === "div" ? "p" : tagName;
+    const textAlignAttribute =
+      FORUM_TEXT_ALIGN_TAGS.has(tagName) ? getForumTextAlignAttribute(tag) : "";
 
     if (isClosing) {
       if (tagName === "a") {
@@ -451,7 +592,7 @@ function sanitizeForumHtml(value: string, renderSmilies: boolean) {
       continue;
     }
 
-    output += `<${normalizedTagName}>`;
+    output += `<${normalizedTagName}${textAlignAttribute}>`;
   }
 
   output += renderForumTextSegment(
@@ -469,6 +610,10 @@ function sanitizeForumContentForStorage(value: string) {
 
 function renderForumContentHtml(value: string) {
   return sanitizeForumHtml(value, true);
+}
+
+function renderForumPreviewHtml(value: string) {
+  return renderForumTextSegment(getForumPreviewText(value), true, false);
 }
 
 function getForumContentText(value: string) {
@@ -597,6 +742,7 @@ function RichTextEditor({
           placeholder,
         }),
         ForumImageExtension,
+        ForumTextAlignExtension,
       ],
       immediatelyRender: false,
       onUpdate: ({ editor: updatedEditor }) => {
@@ -730,6 +876,26 @@ function RichTextEditor({
     editor?.chain().focus().insertContent(valueToInsert).run();
   }
 
+  function setTextAlignment(alignment: ForumTextAlign) {
+    editor?.chain().focus().setForumTextAlign(alignment).run();
+  }
+
+  function isTextAlignmentActive(alignment: ForumTextAlign) {
+    if (!editor) {
+      return false;
+    }
+
+    if (alignment === "left") {
+      return (
+        editor.isActive({ textAlign: "left" }) ||
+        (!editor.isActive({ textAlign: "center" }) &&
+          !editor.isActive({ textAlign: "right" }))
+      );
+    }
+
+    return editor.isActive({ textAlign: alignment });
+  }
+
   const toolbarButtonClassName =
     "flex h-8 w-8 items-center justify-center rounded-full border border-[#d6d1c8] bg-[#fffdf8] text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-40";
   const activeToolbarButtonClassName =
@@ -854,6 +1020,46 @@ function RichTextEditor({
         <span className="h-6 w-px bg-[#d6d1c8]" aria-hidden="true" />
         <button
           type="button"
+          title="Alinear izquierda"
+          aria-label="Alinear izquierda"
+          aria-pressed={isTextAlignmentActive("left")}
+          disabled={!editor}
+          onClick={() => setTextAlignment("left")}
+          className={`${toolbarButtonClassName} ${
+            isTextAlignmentActive("left") ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <AlignLeft size={15} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
+          title="Centrar"
+          aria-label="Centrar"
+          aria-pressed={isTextAlignmentActive("center")}
+          disabled={!editor}
+          onClick={() => setTextAlignment("center")}
+          className={`${toolbarButtonClassName} ${
+            isTextAlignmentActive("center") ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <AlignCenter size={15} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
+          title="Alinear derecha"
+          aria-label="Alinear derecha"
+          aria-pressed={isTextAlignmentActive("right")}
+          disabled={!editor}
+          onClick={() => setTextAlignment("right")}
+          className={`${toolbarButtonClassName} ${
+            isTextAlignmentActive("right") ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <AlignRight size={15} strokeWidth={2.4} />
+        </button>
+        <span className="h-6 w-px bg-[#d6d1c8]" aria-hidden="true" />
+        <button
+          type="button"
           title="Deshacer"
           aria-label="Deshacer"
           disabled={!editor}
@@ -909,6 +1115,7 @@ export default function ForumClient({
   const [categories, setCategories] = useState<ForumCategorySummary[]>([]);
   const [currentCategory, setCurrentCategory] = useState<ForumCategory | null>(null);
   const [topics, setTopics] = useState<ForumTopic[]>([]);
+  const [topicPreviews, setTopicPreviews] = useState<Record<number, ForumTopicPreview>>({});
   const [currentTopic, setCurrentTopic] = useState<ForumTopic | null>(null);
   const [posts, setPosts] = useState<ForumPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -929,6 +1136,7 @@ export default function ForumClient({
   const [replyParent, setReplyParent] = useState<ForumPost | null>(null);
   const [editingPostContent, setEditingPostContent] = useState("");
   const [editingPostId, setEditingPostId] = useState<number | null>(null);
+  const [editingTopicTitle, setEditingTopicTitle] = useState("");
 
   const user = session?.user ?? null;
   const isAdmin = Boolean(
@@ -944,6 +1152,26 @@ export default function ForumClient({
       category &&
         user &&
         (isAdmin || category.author_id === user.id),
+    );
+  }
+
+  function isTopicOpeningPost(post: ForumPost, depth: number) {
+    return Boolean(
+      currentTopic &&
+        depth === 0 &&
+        post.topic_id === currentTopic.id &&
+        posts[0]?.id === post.id,
+    );
+  }
+
+  function canEditForumPost(post: ForumPost, depth: number) {
+    if (!user || post.hidden_at) {
+      return false;
+    }
+
+    return (
+      post.author_id === user.id ||
+      (isTopicOpeningPost(post, depth) && currentTopic?.author_id === user.id)
     );
   }
 
@@ -1024,6 +1252,44 @@ export default function ForumClient({
     });
   }
 
+  async function loadTopicPreviews(nextTopics: ForumTopic[]) {
+    const topicIds = nextTopics.map((topic) => topic.id);
+
+    if (topicIds.length === 0) {
+      setTopicPreviews({});
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("forum_posts")
+      .select("topic_id, content")
+      .in("topic_id", topicIds)
+      .is("parent_id", null)
+      .is("hidden_at", null)
+      .order("created_at", {
+        ascending: true,
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    const previews: Record<number, ForumTopicPreview> = {};
+
+    for (const post of (data ?? []) as Pick<ForumPost, "content" | "topic_id">[]) {
+      if (previews[post.topic_id]) {
+        continue;
+      }
+
+      previews[post.topic_id] = {
+        content: post.content,
+        thumbnailUrl: getForumContentThumbnailUrl(post.content),
+      };
+    }
+
+    setTopicPreviews(previews);
+  }
+
   async function loadForumData() {
     setIsLoading(true);
     setErrorMessage("");
@@ -1091,6 +1357,7 @@ export default function ForumClient({
 
       if (categorySlug && !nextCurrentCategory) {
         setTopics([]);
+        setTopicPreviews({});
         setCurrentTopic(null);
         setPosts([]);
         setErrorMessage("No he encontrado esta categoría del foro.");
@@ -1112,13 +1379,14 @@ export default function ForumClient({
         if (!topicRow) {
           setCurrentTopic(null);
           setPosts([]);
-          setErrorMessage("No he encontrado este hilo del foro.");
+          setErrorMessage("No he encontrado este post del foro.");
           return;
         }
 
         const nextTopic = topicRow as ForumTopic;
         setCurrentTopic(nextTopic);
         setTopics([]);
+        setTopicPreviews({});
 
         const { data: postRows, error: postsError } = await supabase
           .from("forum_posts")
@@ -1138,11 +1406,12 @@ export default function ForumClient({
 
       setCurrentTopic(null);
       setPosts([]);
-      setTopics(
-        nextCurrentCategory
-          ? allTopics.filter((topic) => topic.category_id === nextCurrentCategory.id)
-          : allTopics.slice(0, 12),
-      );
+      const nextTopics = nextCurrentCategory
+        ? allTopics.filter((topic) => topic.category_id === nextCurrentCategory.id)
+        : allTopics.slice(0, 12);
+
+      setTopics(nextTopics);
+      await loadTopicPreviews(nextTopics);
     } catch (error) {
       console.error("Failed to load forum", error);
       setErrorMessage(
@@ -1274,7 +1543,7 @@ export default function ForumClient({
       (currentCategory as ForumCategorySummary | null);
 
     if (!categoryId || !category) {
-      setErrorMessage("Elige una categoría para el hilo.");
+      setErrorMessage("Elige una categoría para el post.");
       return;
     }
 
@@ -1329,7 +1598,7 @@ export default function ForumClient({
       router.push(`/forum/${category.slug}/${topic.slug}`);
     } catch (error) {
       console.error("Failed to create forum topic", error);
-      setErrorMessage("No he podido crear el hilo.");
+      setErrorMessage("No he podido crear el post.");
     } finally {
       setIsSubmitting(false);
     }
@@ -1494,7 +1763,7 @@ export default function ForumClient({
     }
 
     const confirmed = window.confirm(
-      `¿Borrar la categoría "${category.title}" y todos sus hilos?`,
+      `¿Borrar la categoría "${category.title}" y todos sus posts?`,
     );
 
     if (!confirmed) {
@@ -1721,7 +1990,7 @@ export default function ForumClient({
       await loadForumData();
     } catch (error) {
       console.error("Failed to moderate forum topic", error);
-      setErrorMessage("No he podido moderar este hilo.");
+      setErrorMessage("No he podido moderar este post.");
     } finally {
       setActiveAction("");
     }
@@ -1758,12 +2027,12 @@ export default function ForumClient({
   }
 
   async function deleteCurrentTopic() {
-    if (!user || !currentTopic || (!isAdmin && currentTopic.author_id !== user.id)) {
+    if (!isAdmin || !user || !currentTopic) {
       return;
     }
 
     const confirmed = window.confirm(
-      "¿Borrar este hilo y todas sus respuestas?",
+      "¿Borrar este post y todas sus respuestas?",
     );
 
     if (!confirmed) {
@@ -1771,14 +2040,10 @@ export default function ForumClient({
     }
 
     const category = currentCategory ?? getForumCategoryFromTopic(currentTopic);
-    let deleteQuery = supabase
+    const deleteQuery = supabase
       .from("forum_topics")
       .delete()
       .eq("id", currentTopic.id);
-
-    if (!isAdmin) {
-      deleteQuery = deleteQuery.eq("author_id", user.id);
-    }
 
     setActiveAction("delete-topic");
     setErrorMessage("");
@@ -1794,7 +2059,7 @@ export default function ForumClient({
       router.push(category ? `/forum/${category.slug}` : "/forum");
     } catch (error) {
       console.error("Failed to delete forum topic", error);
-      setErrorMessage("No he podido borrar el hilo.");
+      setErrorMessage("No he podido borrar el post.");
     } finally {
       setActiveAction("");
     }
@@ -1831,6 +2096,7 @@ export default function ForumClient({
       if (editingPostId === post.id) {
         setEditingPostId(null);
         setEditingPostContent("");
+        setEditingTopicTitle("");
       }
 
       setNoticeMessage("Respuesta borrada.");
@@ -1843,21 +2109,31 @@ export default function ForumClient({
     }
   }
 
-  function startPostEdit(post: ForumPost) {
+  function startPostEdit(post: ForumPost, depth = 0) {
     setReplyParent(null);
     setEditingPostId(post.id);
     setEditingPostContent(sanitizeForumContentForStorage(post.content));
+    setEditingTopicTitle(
+      isTopicOpeningPost(post, depth) && currentTopic ? currentTopic.title : "",
+    );
   }
 
-  async function savePostEdit(post: ForumPost) {
-    if (!user || post.author_id !== user.id || isSubmitting) {
+  async function savePostEdit(post: ForumPost, depth = 0) {
+    if (!user || !canEditForumPost(post, depth) || isSubmitting) {
       return;
     }
 
     const content = sanitizeForumContentForStorage(editingPostContent);
+    const isTopicRootPost = isTopicOpeningPost(post, depth);
+    const title = editingTopicTitle.trim();
 
     if (!hasForumMeaningfulContent(content)) {
       setErrorMessage("El contenido necesita un poco más de texto.");
+      return;
+    }
+
+    if (isTopicRootPost && title.length < 4) {
+      setErrorMessage("El título necesita un poco más de chicha.");
       return;
     }
 
@@ -1866,13 +2142,39 @@ export default function ForumClient({
     setNoticeMessage("");
 
     try {
-      const { error } = await supabase
+      if (isTopicRootPost) {
+        const topicId = currentTopic?.id;
+
+        if (!topicId) {
+          throw new Error("Missing forum topic while editing its opening post.");
+        }
+
+        const { error: topicError } = await supabase
+          .from("forum_topics")
+          .update({
+            excerpt: getPlainExcerpt(content),
+            title,
+          })
+          .eq("id", topicId)
+          .eq("author_id", user.id);
+
+        if (topicError) {
+          throw topicError;
+        }
+      }
+
+      let updatePostQuery = supabase
         .from("forum_posts")
         .update({
           content,
         })
-        .eq("id", post.id)
-        .eq("author_id", user.id);
+        .eq("id", post.id);
+
+      if (!isTopicRootPost) {
+        updatePostQuery = updatePostQuery.eq("author_id", user.id);
+      }
+
+      const { error } = await updatePostQuery;
 
       if (error) {
         throw error;
@@ -1880,6 +2182,7 @@ export default function ForumClient({
 
       setEditingPostId(null);
       setEditingPostContent("");
+      setEditingTopicTitle("");
       setNoticeMessage("Cambios guardados.");
       await loadForumData();
     } catch (error) {
@@ -1921,6 +2224,11 @@ export default function ForumClient({
 
   function renderTopicListItem(topic: ForumTopic) {
     const category = getTopicCategory(topic, categories);
+    const topicUrl = getTopicUrl(topic, categories);
+    const preview = topicPreviews[topic.id];
+    const previewContent = preview?.content || topic.excerpt || "";
+    const previewHtml = previewContent ? renderForumPreviewHtml(previewContent) : "";
+    const thumbnailUrl = preview?.thumbnailUrl ?? null;
 
     return (
       <article
@@ -1928,39 +2236,60 @@ export default function ForumClient({
         className="border-b border-[#d6d1c8] py-5 last:border-b-0"
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7a746b]">
-              {topic.is_pinned && <span>Fijado</span>}
-              {topic.is_locked && <span>Cerrado</span>}
-              {category && (
-                <Link href={`/forum/${category.slug}`} className="hover:text-[#111111]">
-                  {category.title}
-                </Link>
-              )}
-            </div>
-
-            <Link
-              href={getTopicUrl(topic, categories)}
-              className="mt-2 block newspaper-title text-[clamp(1.65rem,3vw,2.4rem)] font-black leading-[0.98] hover:opacity-70"
-            >
-              {topic.title}
-            </Link>
-
-            {topic.excerpt && (
-              <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#5f5952]">
-                {topic.excerpt}
-              </p>
+          <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-start">
+            {thumbnailUrl && (
+              <Link
+                href={topicUrl}
+                className="block h-24 w-full shrink-0 overflow-hidden rounded-xl border border-[#d6d1c8] bg-[#ece8df] sm:w-32"
+                aria-label={topic.title}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={thumbnailUrl}
+                  alt=""
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                />
+              </Link>
             )}
 
-            <div className="mt-4 flex items-center gap-3 text-sm text-[#6a645c]">
-              <ForumAvatar
-                avatarUrl={topic.author_avatar_url}
-                label={topic.author_name}
-                size="sm"
-              />
-              <span className="min-w-0 truncate">
-                {topic.author_name} · {formatForumDate(topic.last_post_at)}
-              </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7a746b]">
+                {topic.is_pinned && <span>Fijado</span>}
+                {topic.is_locked && <span>Cerrado</span>}
+                {category && (
+                  <Link href={`/forum/${category.slug}`} className="hover:text-[#111111]">
+                    {category.title}
+                  </Link>
+                )}
+              </div>
+
+              <Link
+                href={topicUrl}
+                className="mt-2 block newspaper-title text-[clamp(1.65rem,3vw,2.4rem)] font-black leading-[0.98] hover:opacity-70"
+              >
+                {topic.title}
+              </Link>
+
+              {previewHtml && (
+                <div
+                  className="mt-3 line-clamp-2 text-sm leading-6 text-[#5f5952] [&_.forum-smilie]:max-h-7"
+                  dangerouslySetInnerHTML={{
+                    __html: previewHtml,
+                  }}
+                />
+              )}
+
+              <div className="mt-4 flex items-center gap-3 text-sm text-[#6a645c]">
+                <ForumAvatar
+                  avatarUrl={topic.author_avatar_url}
+                  label={topic.author_name}
+                  size="sm"
+                />
+                <span className="min-w-0 truncate">
+                  {topic.author_name} · {formatForumDate(topic.last_post_at)}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1978,13 +2307,13 @@ export default function ForumClient({
   }
 
   function renderCategoryListItem(category: ForumCategorySummary) {
-    const topicLabel = formatForumCount(category.topicCount, "hilo", "hilos");
+    const topicLabel = formatForumCount(category.topicCount, "post", "posts");
 
     return (
       <Link
         key={category.id}
         href={`/forum/${category.slug}`}
-        className="editorial-card block rounded-[1.6rem] px-5 py-5 transition hover:-translate-y-px hover:shadow-[0_16px_34px_rgba(17,17,17,0.08)] sm:px-6"
+        className="editorial-card block rounded-[1.6rem] px-5 py-5 transition hover:shadow-[0_16px_34px_rgba(17,17,17,0.08)] sm:px-6"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -2009,7 +2338,7 @@ export default function ForumClient({
               {category.topicCount}
             </p>
             <p className="mt-1 text-[0.62rem] uppercase tracking-[0.14em] text-[#7a746b]">
-              {category.topicCount === 1 ? "hilo" : "hilos"}
+              {category.topicCount === 1 ? "post" : "posts"}
             </p>
           </div>
         </div>
@@ -2044,12 +2373,12 @@ export default function ForumClient({
           <div>
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-base font-black text-[#111111]">
-                Escribir hilo
+                Escribir post
               </h2>
               <button
                 type="button"
                 onClick={() => setIsTopicComposerOpen(false)}
-                className="editorial-link-button !px-0 !py-0"
+                className="editorial-link-button"
               >
                 Cerrar
               </button>
@@ -2075,7 +2404,7 @@ export default function ForumClient({
               <input
                 value={newTopicTitle}
                 onChange={(event) => setNewTopicTitle(event.target.value)}
-                placeholder="Título del hilo"
+                placeholder="Título del post"
                 className="editorial-field"
                 maxLength={140}
                 required
@@ -2084,7 +2413,7 @@ export default function ForumClient({
               <RichTextEditor
                 value={newTopicContent}
                 onChange={setNewTopicContent}
-                placeholder="Contenido del hilo..."
+                placeholder="Contenido del post..."
                 uploadOwnerId={user.id}
               />
 
@@ -2094,7 +2423,7 @@ export default function ForumClient({
                   disabled={isSubmitting}
                   className="editorial-cta editorial-cta-dark"
                 >
-                  {isSubmitting ? "Publicando..." : "Publicar hilo"}
+                  {isSubmitting ? "Publicando..." : "Publicar post"}
                 </button>
               </div>
             </form>
@@ -2123,7 +2452,7 @@ export default function ForumClient({
           <button
             type="button"
             onClick={closeCategoryComposer}
-            className="editorial-link-button !px-0 !py-0"
+            className="editorial-link-button"
           >
             Cerrar
           </button>
@@ -2179,6 +2508,7 @@ export default function ForumClient({
     const canReply = Boolean(user && currentTopic && !currentTopic.is_locked && !isHidden);
     const isOwnPost = user?.id === post.author_id;
     const isEditingPost = editingPostId === post.id;
+    const canEditPost = canEditForumPost(post, depth);
     const canDeletePost = Boolean(
       depth > 0 &&
         user &&
@@ -2226,10 +2556,10 @@ export default function ForumClient({
                 </button>
               )}
 
-              {isOwnPost && !isHidden && !isEditingPost && (
+              {canEditPost && !isEditingPost && (
                 <button
                   type="button"
-                  onClick={() => startPostEdit(post)}
+                  onClick={() => startPostEdit(post, depth)}
                   className="editorial-link-button"
                 >
                   Editar
@@ -2279,22 +2609,34 @@ export default function ForumClient({
             <form
               onSubmit={(event) => {
                 event.preventDefault();
-                void savePostEdit(post);
+                void savePostEdit(post, depth);
               }}
               className="mt-5 space-y-4"
             >
-                <RichTextEditor
-                  value={editingPostContent}
-                  onChange={setEditingPostContent}
-                  placeholder={depth === 0 ? "Edita el hilo..." : "Edita la respuesta..."}
-                  uploadOwnerId={user?.id}
+              {isTopicOpeningPost(post, depth) && (
+                <input
+                  value={editingTopicTitle}
+                  onChange={(event) => setEditingTopicTitle(event.target.value)}
+                  placeholder="Título del post"
+                  className="editorial-field"
+                  maxLength={140}
+                  required
                 />
+              )}
+
+              <RichTextEditor
+                value={editingPostContent}
+                onChange={setEditingPostContent}
+                placeholder={depth === 0 ? "Edita el post..." : "Edita la respuesta..."}
+                uploadOwnerId={user?.id}
+              />
               <div className="flex flex-wrap justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setEditingPostId(null);
                     setEditingPostContent("");
+                    setEditingTopicTitle("");
                   }}
                   className="editorial-link-button"
                 >
@@ -2317,7 +2659,7 @@ export default function ForumClient({
                 </span>
               )}
               <div
-                className="break-words text-[1.03rem] leading-8 text-[#222] [&_a]:font-bold [&_a]:text-red-700 [&_a]:underline [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-[#d6d1c8] [&_blockquote]:pl-4 [&_img]:my-4 [&_img]:max-h-[520px] [&_img]:w-auto [&_img]:max-w-full [&_img]:rounded-xl [&_img]:border [&_img]:border-[#d6d1c8] [&_img]:object-contain [&_li]:ml-5 [&_ol]:my-3 [&_ol]:list-decimal [&_p]:mb-3 [&_strong]:font-black [&_ul]:my-3 [&_ul]:list-disc"
+                className="break-words text-[1.03rem] leading-8 text-[#222] [&_a]:font-bold [&_a]:text-red-700 [&_a]:underline [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-[#d6d1c8] [&_blockquote]:pl-4 [&_li]:ml-5 [&_ol]:my-3 [&_ol]:list-decimal [&_p]:mb-3 [&_strong]:font-black [&_ul]:my-3 [&_ul]:list-disc"
                 dangerouslySetInnerHTML={{
                   __html: renderForumContentHtml(post.content),
                 }}
@@ -2339,7 +2681,7 @@ export default function ForumClient({
     return (
       <section className="mx-auto max-w-3xl px-6 py-12">
         <div className="mb-8">
-          <Link href="/forum" className="editorial-link-button !px-0">
+          <Link href="/forum" className="editorial-link-button">
             Volver al foro
           </Link>
           <h1 className="mt-4 text-2xl font-black leading-tight sm:text-3xl">
@@ -2453,6 +2795,54 @@ export default function ForumClient({
     );
   }
 
+  function renderForumBreadcrumbs() {
+    const category = currentCategory ?? getForumCategoryFromTopic(currentTopic);
+    const crumbs = [
+      {
+        href: "/forum",
+        label: "Foro",
+      },
+    ];
+
+    if (category && (isCategoryView || isTopicView)) {
+      crumbs.push({
+        href: `/forum/${category.slug}`,
+        label: category.title,
+      });
+    }
+
+    if (currentTopic && isTopicView) {
+      crumbs.push({
+        href: "",
+        label: currentTopic.title,
+      });
+    }
+
+    return (
+      <nav
+        aria-label="Breadcrumb"
+        className="mb-6 flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6a645c]"
+      >
+        {crumbs.map((crumb, index) => {
+          const isLastCrumb = index === crumbs.length - 1;
+
+          return (
+            <span key={`${crumb.label}-${index}`} className="inline-flex items-center gap-2">
+              {index > 0 && <span className="text-[#aaa39a]">&gt;</span>}
+              {isLastCrumb || !crumb.href ? (
+                <span className="text-[#111111]">{crumb.label}</span>
+              ) : (
+                <Link href={crumb.href} className="hover:text-[#111111]">
+                  {crumb.label}
+                </Link>
+              )}
+            </span>
+          );
+        })}
+      </nav>
+    );
+  }
+
   if (profileOnly) {
     return (
       <>
@@ -2489,27 +2879,20 @@ export default function ForumClient({
       {renderForumHeader()}
       {renderStatusMessages()}
 
-      <main className="mx-auto grid max-w-7xl gap-10 px-6 py-12 lg:grid-cols-[1fr_360px]">
+      <main className="mx-auto grid min-h-[70vh] max-w-7xl gap-10 px-6 py-12 lg:grid-cols-[1fr_360px]">
         <section className="min-w-0">
           {user && isCategoryComposerOpen && (
             <div className="mb-8">{renderCategoryComposer()}</div>
           )}
+
+          {!isLoading && renderForumBreadcrumbs()}
 
           {isLoading ? (
             null
           ) : isTopicView && currentTopic ? (
             <>
               <div className="mb-8">
-                <Link
-                  href={
-                    currentCategory ? `/forum/${currentCategory.slug}` : "/forum"
-                  }
-                  className="editorial-link-button !px-0"
-                >
-                  Volver a {currentCategory?.title ?? "foro"}
-                </Link>
-
-                <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7a746b]">
                       {currentTopic.is_pinned && <span>Fijado</span>}
@@ -2525,44 +2908,40 @@ export default function ForumClient({
                     </p>
                   </div>
 
-                  {(isAdmin || user?.id === currentTopic.author_id) && (
-                    <div className="flex flex-wrap gap-2">
-                      {isAdmin && (
-                        <>
-                          <button
-                            type="button"
-                            disabled={activeAction === "topic"}
-                            onClick={() =>
-                              void updateTopicModeration({
-                                is_locked: !currentTopic.is_locked,
-                              })
-                            }
-                            className="editorial-link-button"
-                          >
-                            {currentTopic.is_locked ? "Abrir" : "Cerrar"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={activeAction === "topic"}
-                            onClick={() =>
-                              void updateTopicModeration({
-                                hidden_at: new Date().toISOString(),
-                                hidden_by: user?.id ?? null,
-                              })
-                            }
-                            className="editorial-link-button"
-                          >
-                            Ocultar hilo
-                          </button>
-                        </>
-                      )}
+                  {isAdmin && (
+                    <div className="flex shrink-0 flex-wrap items-center gap-1 sm:justify-end">
+                      <button
+                        type="button"
+                        disabled={activeAction === "topic"}
+                        onClick={() =>
+                          void updateTopicModeration({
+                            is_locked: !currentTopic.is_locked,
+                          })
+                        }
+                        className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {currentTopic.is_locked ? "Abrir" : "Cerrar"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={activeAction === "topic"}
+                        onClick={() =>
+                          void updateTopicModeration({
+                            hidden_at: new Date().toISOString(),
+                            hidden_by: user?.id ?? null,
+                          })
+                        }
+                        className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Ocultar
+                      </button>
                       <button
                         type="button"
                         disabled={activeAction === "delete-topic"}
                         onClick={() => void deleteCurrentTopic()}
-                        className="editorial-link-button disabled:cursor-not-allowed disabled:opacity-50"
+                        className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Borrar hilo
+                        Borrar
                       </button>
                     </div>
                   )}
@@ -2580,7 +2959,7 @@ export default function ForumClient({
                       {replyParent
                         ? `Respuesta para ${replyParent.author_name}`
                         : currentTopic.is_locked
-                          ? "Hilo cerrado"
+                          ? "Post cerrado"
                           : "Responder"}
                     </p>
                     <p className="mt-2 text-sm text-[#6a645c]">
@@ -2607,7 +2986,7 @@ export default function ForumClient({
                   </button>
                 ) : currentTopic.is_locked && !isAdmin ? (
                   <p className="mt-5 text-sm text-[#6a645c]">
-                    Este hilo está cerrado a nuevas respuestas.
+                    Este post está cerrado a nuevas respuestas.
                   </p>
                 ) : (
                   <form onSubmit={submitReply} className="mt-6 space-y-4">
@@ -2635,10 +3014,7 @@ export default function ForumClient({
               {isCategoryView && currentCategory ? (
                 <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <Link href="/forum" className="editorial-link-button !px-0">
-                      Todas las categorías
-                    </Link>
-                    <h2 className="mt-4 text-2xl font-black leading-tight sm:text-3xl">
+                    <h2 className="text-2xl font-black leading-tight sm:text-3xl">
                       {currentCategory.title}
                     </h2>
                     {currentCategory.description && (
@@ -2654,7 +3030,7 @@ export default function ForumClient({
                       onClick={openTopicComposer}
                       className="editorial-cta editorial-cta-dark self-start !px-4 !py-2 !text-[0.68rem]"
                     >
-                      Crear hilo
+                      Crear post
                     </button>
                   )}
                 </div>
@@ -2688,13 +3064,13 @@ export default function ForumClient({
                     topics.map((topic) => renderTopicListItem(topic))
                   ) : (
                     <div className="py-8 text-center text-[#5f5952]">
-                      <p>Todavía no hay hilos por aquí.</p>
+                      <p>Todavía no hay posts por aquí.</p>
                       <button
                         type="button"
                         onClick={openTopicComposer}
                         className="editorial-cta editorial-cta-dark mt-5 !px-4 !py-2 !text-[0.68rem]"
                       >
-                        Crear hilo
+                        Crear post
                       </button>
                     </div>
                   )}
@@ -2702,7 +3078,9 @@ export default function ForumClient({
               ) : (
                 <div className="grid gap-4">
                   {categories.length > 0 ? (
-                    categories.map((category) => renderCategoryListItem(category))
+                    getForumIndexCategories(categories).map((category) =>
+                      renderCategoryListItem(category),
+                    )
                   ) : (
                     <div className="editorial-card rounded-[2rem] px-5 py-8 text-center text-[#5f5952] sm:px-7">
                       <p>Todavía no hay categorías por aquí.</p>
@@ -2731,129 +3109,131 @@ export default function ForumClient({
           )}
         </section>
 
-        <aside className="space-y-6 lg:sticky lg:top-24 lg:self-start">
-          <section className="editorial-card rounded-[2rem] px-5 py-6 lg:flex lg:max-h-[calc(100vh-7rem)] lg:flex-col lg:overflow-hidden">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-xl font-black leading-tight">
-                Categorías
-              </h2>
-              {user && (
-                <button
-                  type="button"
-                  title="Añadir categoría"
-                  aria-label="Añadir categoría"
-                  onClick={openCategoryCreate}
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-[#111111] transition hover:bg-[#f5efe4]"
-                >
-                  <Plus size={15} strokeWidth={2.4} />
-                </button>
-              )}
-            </div>
-
-            <div className="mt-5 space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-              {categories.map((category, index) => {
-                const isCategoryReordering =
-                  activeAction.startsWith("category-order-");
-                const canManageCurrentCategory = canManageCategory(category);
-                const isDeletingCategory =
-                  activeAction === `category-delete-${category.id}`;
-
-                return (
-                  <div
-                    key={category.id}
-                    className="rounded-[1.35rem] border border-[#d6d1c8] bg-[#fffdf8] px-4 py-4 transition hover:-translate-y-px hover:shadow-[0_12px_28px_rgba(17,17,17,0.08)]"
+        {!isLoading && (
+          <aside className="space-y-6 lg:sticky lg:top-24 lg:self-start">
+            <section className="editorial-card rounded-[2rem] px-5 py-6 lg:flex lg:max-h-[calc(100vh-7rem)] lg:flex-col lg:overflow-hidden">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-xl font-black leading-tight">
+                  Categorías
+                </h2>
+                {user && (
+                  <button
+                    type="button"
+                    title="Añadir categoría"
+                    aria-label="Añadir categoría"
+                    onClick={openCategoryCreate}
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-[#111111] transition hover:bg-[#f5efe4]"
                   >
-                    <div className="flex items-start gap-3">
-                      <span
-                        className="mt-1 h-3 w-3 shrink-0 rounded-full"
-                        style={{ background: category.color }}
-                      />
-                      <Link
-                        href={`/forum/${category.slug}`}
-                        className="min-w-0 flex-1"
-                      >
-                        <p className="font-bold text-[#111111]">
-                          {category.title}
-                        </p>
-                        {category.description && (
-                          <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#6a645c]">
-                            {category.description}
-                          </p>
-                        )}
-                        <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[#7a746b]">
-                          {formatForumCount(category.topicCount, "hilo", "hilos")} ·{" "}
-                          {formatForumCount(category.threadCount, "respuesta", "respuestas")}
-                        </p>
-                      </Link>
+                    <Plus size={15} strokeWidth={2.4} />
+                  </button>
+                )}
+              </div>
 
-                      {(canManageCurrentCategory || isAdmin) && (
-                        <div className="flex shrink-0 flex-col gap-1">
-                          {canManageCurrentCategory && (
-                            <>
-                              <button
-                                type="button"
-                                title={`Editar ${category.title}`}
-                                aria-label={`Editar ${category.title}`}
-                                disabled={
-                                  activeAction.startsWith("category-order-") ||
-                                  isDeletingCategory
-                                }
-                                onClick={() => openCategoryEdit(category)}
-                                className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
-                              >
-                                <Pencil size={13} strokeWidth={2.3} />
-                              </button>
-                              <button
-                                type="button"
-                                title={`Borrar ${category.title}`}
-                                aria-label={`Borrar ${category.title}`}
-                                disabled={
-                                  activeAction.startsWith("category-order-") ||
-                                  isDeletingCategory
-                                }
-                                onClick={() => void deleteCategory(category)}
-                                className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
-                              >
-                                <Trash2 size={13} strokeWidth={2.3} />
-                              </button>
-                            </>
+              <div className="mt-5 space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+                {categories.map((category, index) => {
+                  const isCategoryReordering =
+                    activeAction.startsWith("category-order-");
+                  const canManageCurrentCategory = canManageCategory(category);
+                  const isDeletingCategory =
+                    activeAction === `category-delete-${category.id}`;
+
+                  return (
+                    <div
+                      key={category.id}
+                      className="rounded-[1.35rem] border border-[#d6d1c8] bg-[#fffdf8] px-4 py-4 transition hover:shadow-[0_12px_28px_rgba(17,17,17,0.08)]"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span
+                          className="mt-1 h-3 w-3 shrink-0 rounded-full"
+                          style={{ background: category.color }}
+                        />
+                        <Link
+                          href={`/forum/${category.slug}`}
+                          className="min-w-0 flex-1"
+                        >
+                          <p className="font-bold text-[#111111]">
+                            {category.title}
+                          </p>
+                          {category.description && (
+                            <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#6a645c]">
+                              {category.description}
+                            </p>
                           )}
-                          {isAdmin && (
-                            <>
-                              <button
-                                type="button"
-                                title={`Subir ${category.title}`}
-                                aria-label={`Subir ${category.title}`}
-                                disabled={index === 0 || isCategoryReordering}
-                                onClick={() => void moveCategory(category.id, -1)}
-                                className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
-                              >
-                                ↑
-                              </button>
-                              <button
-                                type="button"
-                                title={`Bajar ${category.title}`}
-                                aria-label={`Bajar ${category.title}`}
-                                disabled={
-                                  index === categories.length - 1 ||
-                                  isCategoryReordering
-                                }
-                                onClick={() => void moveCategory(category.id, 1)}
-                                className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
-                              >
-                                ↓
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      )}
+                          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[#7a746b]">
+                            {formatForumCount(category.topicCount, "post", "posts")} ·{" "}
+                            {formatForumCount(category.threadCount, "respuesta", "respuestas")}
+                          </p>
+                        </Link>
+
+                        {(canManageCurrentCategory || isAdmin) && (
+                          <div className="flex shrink-0 flex-col gap-1">
+                            {canManageCurrentCategory && (
+                              <>
+                                <button
+                                  type="button"
+                                  title={`Editar ${category.title}`}
+                                  aria-label={`Editar ${category.title}`}
+                                  disabled={
+                                    activeAction.startsWith("category-order-") ||
+                                    isDeletingCategory
+                                  }
+                                  onClick={() => openCategoryEdit(category)}
+                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
+                                >
+                                  <Pencil size={13} strokeWidth={2.3} />
+                                </button>
+                                <button
+                                  type="button"
+                                  title={`Borrar ${category.title}`}
+                                  aria-label={`Borrar ${category.title}`}
+                                  disabled={
+                                    activeAction.startsWith("category-order-") ||
+                                    isDeletingCategory
+                                  }
+                                  onClick={() => void deleteCategory(category)}
+                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
+                                >
+                                  <Trash2 size={13} strokeWidth={2.3} />
+                                </button>
+                              </>
+                            )}
+                            {isAdmin && (
+                              <>
+                                <button
+                                  type="button"
+                                  title={`Subir ${category.title}`}
+                                  aria-label={`Subir ${category.title}`}
+                                  disabled={index === 0 || isCategoryReordering}
+                                  onClick={() => void moveCategory(category.id, -1)}
+                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  type="button"
+                                  title={`Bajar ${category.title}`}
+                                  aria-label={`Bajar ${category.title}`}
+                                  disabled={
+                                    index === categories.length - 1 ||
+                                    isCategoryReordering
+                                  }
+                                  onClick={() => void moveCategory(category.id, 1)}
+                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
+                                >
+                                  ↓
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </aside>
+                  );
+                })}
+              </div>
+            </section>
+          </aside>
+        )}
       </main>
     </>
   );
