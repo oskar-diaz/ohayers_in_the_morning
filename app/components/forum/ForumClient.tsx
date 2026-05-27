@@ -1,0 +1,2860 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  Bold,
+  Image as ImageIcon,
+  Italic,
+  Link as LinkIcon,
+  List,
+  ListOrdered,
+  Pencil,
+  Plus,
+  Quote,
+  Redo2,
+  Strikethrough,
+  Trash2,
+  Underline,
+  Undo2,
+} from "lucide-react";
+import { mergeAttributes, Node } from "@tiptap/core";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
+import {
+  ChangeEvent,
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { Session, User } from "@supabase/supabase-js";
+
+import { ADMIN_EMAILS, normalizeEmail } from "@/lib/admin";
+import { getCurrentAuthUrl, rememberAuthReturnTo } from "@/lib/auth-redirect";
+import {
+  FORUM_SMILIE_MAP,
+  FORUM_SMILIE_PATTERN,
+  FORUM_SMILIES,
+  ForumCategory,
+  ForumPost,
+  ForumPostNode,
+  ForumProfile,
+  ForumTopic,
+  buildForumPostTree,
+  formatForumDate,
+  getForumCategoryFromTopic,
+  getForumInitials,
+  getForumUserAvatarUrl,
+  getForumUserName,
+  slugifyForumValue,
+} from "@/lib/forum";
+import { supabase } from "@/lib/supabase";
+
+type ForumClientProps = {
+  categorySlug?: string;
+  profileOnly?: boolean;
+  topicSlug?: string;
+};
+
+type ForumCategorySummary = ForumCategory & {
+  latestTopic: ForumTopic | null;
+  postCount: number;
+  threadCount: number;
+  topicCount: number;
+};
+
+type ProfileFormState = {
+  bio: string;
+  displayName: string;
+};
+
+const ALLOWED_FORUM_TAGS = new Set([
+  "a",
+  "blockquote",
+  "br",
+  "div",
+  "em",
+  "i",
+  "img",
+  "li",
+  "ol",
+  "p",
+  "s",
+  "strong",
+  "u",
+  "ul",
+]);
+const FORUM_IMAGE_BUCKET = "forum-images";
+const FORUM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const FORUM_IMAGE_MIME_TYPES = new Set([
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const FORUM_URL_PATTERN = /https?:\/\/[^\s<]+/g;
+
+function isGoogleUser(user: User | null) {
+  if (!user) {
+    return false;
+  }
+
+  const primaryProvider = user.app_metadata?.provider;
+  const providers = Array.isArray(user.app_metadata?.providers)
+    ? user.app_metadata.providers
+    : [];
+  const identityProviders = Array.isArray(user.identities)
+    ? user.identities
+        .map((identity) => identity.provider)
+        .filter((provider): provider is string => Boolean(provider))
+    : [];
+
+  return [primaryProvider, ...providers, ...identityProviders].includes("google");
+}
+
+function getTopicCategory(
+  topic: ForumTopic,
+  categories: ForumCategorySummary[],
+) {
+  return (
+    categories.find((category) => category.id === topic.category_id) ??
+    getForumCategoryFromTopic(topic) ??
+    null
+  );
+}
+
+function getTopicUrl(topic: ForumTopic, categories: ForumCategorySummary[]) {
+  const category = getTopicCategory(topic, categories);
+
+  return category ? `/forum/${category.slug}/${topic.slug}` : "/forum";
+}
+
+function getPlainExcerpt(value: string) {
+  return getForumContentText(value).replace(/\s+/g, " ").trim().slice(0, 220);
+}
+
+function formatForumCount(count: number, singular: string, plural: string) {
+  return count === 1 ? `1 ${singular}` : `${count} ${plural}`;
+}
+
+function getSupabaseErrorCode(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return "";
+  }
+
+  const code = (error as { code?: unknown }).code;
+
+  return typeof code === "string" ? code : "";
+}
+
+function getForumTagAttribute(tag: string, name: string) {
+  const pattern = new RegExp(
+    `\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
+    "i",
+  );
+  const match = tag.match(pattern);
+
+  return match?.[1] ?? match?.[2] ?? match?.[3] ?? "";
+}
+
+function escapeForumHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function escapeForumAttribute(value: string) {
+  return escapeForumHtml(value).replace(/`/g, "&#96;");
+}
+
+function normalizeForumUrl(value: string) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  const withProtocol = /^[a-z][a-z0-9+.-]*:/i.test(trimmedValue)
+    ? trimmedValue
+    : `https://${trimmedValue}`;
+
+  try {
+    const url = new URL(withProtocol);
+
+    if (!["http:", "https:", "mailto:"].includes(url.protocol)) {
+      return "";
+    }
+
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function normalizeForumImageUrl(value: string) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  if (/^\/(?!\/)/.test(trimmedValue)) {
+    return trimmedValue;
+  }
+
+  try {
+    const url = new URL(trimmedValue);
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return "";
+    }
+
+    if (
+      !url.pathname.startsWith(
+        `/storage/v1/object/public/${FORUM_IMAGE_BUCKET}/`,
+      )
+    ) {
+      return "";
+    }
+
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function getForumImageExtension(file: File) {
+  const extensionFromName = file.name.split(".").pop()?.toLowerCase() ?? "";
+
+  if (["gif", "jpg", "jpeg", "png", "webp"].includes(extensionFromName)) {
+    return extensionFromName === "jpeg" ? "jpg" : extensionFromName;
+  }
+
+  if (file.type === "image/png") {
+    return "png";
+  }
+
+  if (file.type === "image/webp") {
+    return "webp";
+  }
+
+  if (file.type === "image/gif") {
+    return "gif";
+  }
+
+  return "jpg";
+}
+
+function getForumImagePath(userId: string, file: File) {
+  const extension = getForumImageExtension(file);
+  const randomId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+
+  return `${userId}/${Date.now()}-${randomId}.${extension}`;
+}
+
+function hasForumMeaningfulContent(value: string) {
+  return getForumContentText(value).length >= 2 || /<img\s/i.test(value);
+}
+
+function getForumLinkHtml(href: string, label: string) {
+  const safeHref = normalizeForumUrl(href);
+
+  if (!safeHref) {
+    return escapeForumHtml(label);
+  }
+
+  return `<a href="${escapeForumAttribute(
+    safeHref,
+  )}" target="_blank" rel="noopener noreferrer nofollow">${label}</a>`;
+}
+
+const ForumImageExtension = Node.create({
+  name: "forumImage",
+  group: "block",
+  atom: true,
+  draggable: true,
+  selectable: true,
+
+  addAttributes() {
+    return {
+      alt: {
+        default: "",
+      },
+      src: {
+        default: null,
+      },
+      title: {
+        default: "",
+      },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: "img[src]",
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ["img", mergeAttributes(HTMLAttributes)];
+  },
+});
+
+function renderForumSmiliesToHtml(value: string) {
+  return value.split(FORUM_SMILIE_PATTERN).map((part) => {
+    const smilie = FORUM_SMILIE_MAP[part];
+
+    if (smilie) {
+      if (smilie.src) {
+        return `<img src="${escapeForumAttribute(
+          smilie.src,
+        )}" alt="${escapeForumAttribute(
+          smilie.label,
+        )}" title="${escapeForumAttribute(
+          part,
+        )}" class="mx-0.5 inline-block max-h-10 w-auto -translate-y-[2px] align-middle object-contain" />`;
+      }
+
+      return `<span class="inline-block -translate-y-px font-mono text-[0.92em]" aria-label="${escapeForumAttribute(
+        part,
+      )}">${escapeForumHtml(smilie.value)}</span>`;
+    }
+
+    return escapeForumHtml(part);
+  }).join("");
+}
+
+function renderForumTextSegment(
+  value: string,
+  renderSmilies: boolean,
+  linkify: boolean,
+) {
+  let output = "";
+  let cursor = 0;
+
+  for (const match of linkify ? value.matchAll(FORUM_URL_PATTERN) : []) {
+    const index = match.index ?? 0;
+    const textBeforeUrl = value.slice(cursor, index);
+    const url = match[0];
+
+    output += renderSmilies
+      ? renderForumSmiliesToHtml(textBeforeUrl)
+      : escapeForumHtml(textBeforeUrl);
+    output += getForumLinkHtml(url, escapeForumHtml(url));
+    cursor = index + url.length;
+  }
+
+  const rest = value.slice(cursor);
+
+  output += renderSmilies ? renderForumSmiliesToHtml(rest) : escapeForumHtml(rest);
+
+  return output.replace(/\n/g, "<br />");
+}
+
+function sanitizeForumHtml(value: string, renderSmilies: boolean) {
+  let output = "";
+  let cursor = 0;
+  let anchorDepth = 0;
+  const normalizedValue = value.replace(/\r\n?/g, "\n");
+
+  for (const match of normalizedValue.matchAll(/<\/?[^>]+>/g)) {
+    const tag = match[0];
+    const index = match.index ?? 0;
+    const textBeforeTag = normalizedValue.slice(cursor, index);
+
+    output += renderForumTextSegment(
+      textBeforeTag,
+      renderSmilies && anchorDepth === 0,
+      anchorDepth === 0,
+    );
+    cursor = index + tag.length;
+
+    const tagMatch = tag.match(/^<\s*(\/?)\s*([a-z0-9]+)/i);
+
+    if (!tagMatch) {
+      continue;
+    }
+
+    const isClosing = Boolean(tagMatch[1]);
+    const tagName = tagMatch[2].toLowerCase();
+
+    if (!ALLOWED_FORUM_TAGS.has(tagName)) {
+      continue;
+    }
+
+    if (tagName === "img") {
+      if (isClosing || anchorDepth > 0) {
+        continue;
+      }
+
+      const src = normalizeForumImageUrl(getForumTagAttribute(tag, "src"));
+
+      if (!src) {
+        continue;
+      }
+
+      const alt = getForumTagAttribute(tag, "alt").slice(0, 160);
+      const title = getForumTagAttribute(tag, "title").slice(0, 160);
+      const titleAttribute = title
+        ? ` title="${escapeForumAttribute(title)}"`
+        : "";
+
+      output += `<img src="${escapeForumAttribute(
+        src,
+      )}" alt="${escapeForumAttribute(
+        alt,
+      )}"${titleAttribute} loading="lazy" class="my-4 max-h-[520px] w-auto max-w-full rounded-xl border border-[#d6d1c8] object-contain" />`;
+      continue;
+    }
+
+    if (tagName === "br") {
+      output += "<br />";
+      continue;
+    }
+
+    const normalizedTagName = tagName === "div" ? "p" : tagName;
+
+    if (isClosing) {
+      if (tagName === "a") {
+        anchorDepth = Math.max(0, anchorDepth - 1);
+      }
+
+      output += `</${normalizedTagName}>`;
+      continue;
+    }
+
+    if (tagName === "a") {
+      const hrefMatch = tag.match(/\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      const href = normalizeForumUrl(
+        hrefMatch?.[1] ?? hrefMatch?.[2] ?? hrefMatch?.[3] ?? "",
+      );
+
+      if (!href) {
+        continue;
+      }
+
+      anchorDepth += 1;
+      output += `<a href="${escapeForumAttribute(
+        href,
+      )}" target="_blank" rel="noopener noreferrer nofollow">`;
+      continue;
+    }
+
+    output += `<${normalizedTagName}>`;
+  }
+
+  output += renderForumTextSegment(
+    normalizedValue.slice(cursor),
+    renderSmilies && anchorDepth === 0,
+    anchorDepth === 0,
+  );
+
+  return output.trim();
+}
+
+function sanitizeForumContentForStorage(value: string) {
+  return sanitizeForumHtml(value, false);
+}
+
+function renderForumContentHtml(value: string) {
+  return sanitizeForumHtml(value, true);
+}
+
+function getForumContentText(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|blockquote)>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function ForumAvatar({
+  avatarUrl,
+  label,
+  size = "md",
+}: {
+  avatarUrl?: string | null;
+  label: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  const sizeClassName =
+    size === "lg" ? "h-16 w-16 text-base" : size === "sm" ? "h-9 w-9 text-xs" : "h-11 w-11 text-sm";
+
+  if (avatarUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarUrl}
+        alt=""
+        className={`${sizeClassName} shrink-0 rounded-full object-cover ring-1 ring-black/10`}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`${sizeClassName} flex shrink-0 items-center justify-center rounded-full border border-black/10 bg-white/75 font-black text-[#111111]`}
+    >
+      {getForumInitials(label)}
+    </div>
+  );
+}
+
+function SmilieBar({ onPick }: { onPick: (value: string) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      {FORUM_SMILIES.map((smilie, index) =>
+        smilie.type === "break" ? (
+          <span
+            key={`break-${index}`}
+            className="h-0 basis-full"
+            aria-hidden="true"
+          />
+        ) : (
+          <button
+            key={`${smilie.token}-${index}`}
+            type="button"
+            title={smilie.label}
+            onClick={() => onPick(smilie.token)}
+            className="inline-flex min-h-7 items-center justify-center border-0 bg-transparent p-0.5 text-left font-mono text-xs leading-none text-[#5f5952] transition hover:-translate-y-px hover:opacity-75"
+          >
+            {smilie.src ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={smilie.src}
+                alt={smilie.label}
+                className="h-auto max-h-10 w-auto object-contain"
+              />
+            ) : (
+              smilie.value
+            )}
+          </button>
+        ),
+      )}
+    </div>
+  );
+}
+
+function RichTextEditor({
+  onChange,
+  placeholder,
+  uploadOwnerId,
+  value,
+}: {
+  onChange: (value: string) => void;
+  placeholder: string;
+  uploadOwnerId?: string;
+  value: string;
+}) {
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const [imageUploadError, setImageUploadError] = useState("");
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const editor = useEditor(
+    {
+      content: value || "",
+      editorProps: {
+        attributes: {
+          class:
+            "min-h-[170px] max-w-none outline-none",
+        },
+      },
+      extensions: [
+        StarterKit.configure({
+          code: false,
+          codeBlock: false,
+          heading: false,
+          horizontalRule: false,
+          link: {
+            autolink: true,
+            defaultProtocol: "https",
+            HTMLAttributes: {
+              rel: "noopener noreferrer nofollow",
+              target: "_blank",
+            },
+            openOnClick: false,
+            protocols: ["http", "https", "mailto"],
+          },
+        }),
+        Placeholder.configure({
+          placeholder,
+        }),
+        ForumImageExtension,
+      ],
+      immediatelyRender: false,
+      onUpdate: ({ editor: updatedEditor }) => {
+        onChange(updatedEditor.getHTML());
+      },
+    },
+    [onChange, placeholder],
+  );
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    const currentHtml = editor.getHTML();
+    const nextValue = value || "";
+
+    if (currentHtml !== nextValue) {
+      editor.commands.setContent(nextValue, {
+        emitUpdate: false,
+      });
+    }
+  }, [editor, value]);
+
+  function insertLink() {
+    if (!editor) {
+      return;
+    }
+
+    const currentHref = editor.getAttributes("link").href;
+    const href = window.prompt(
+      "URL",
+      typeof currentHref === "string" ? currentHref : "",
+    );
+
+    if (href === null) {
+      return;
+    }
+
+    const safeHref = normalizeForumUrl(href);
+
+    if (!safeHref) {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      return;
+    }
+
+    if (editor.state.selection.empty) {
+      editor
+        .chain()
+        .focus()
+        .insertContent(getForumLinkHtml(safeHref, escapeForumHtml(safeHref)))
+        .run();
+      return;
+    }
+
+    editor.chain().focus().extendMarkRange("link").setLink({ href: safeHref }).run();
+  }
+
+  async function uploadImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file || !editor || isUploadingImage) {
+      return;
+    }
+
+    if (!uploadOwnerId) {
+      setImageUploadError("Entra con Google para subir imágenes.");
+      return;
+    }
+
+    if (!FORUM_IMAGE_MIME_TYPES.has(file.type)) {
+      setImageUploadError("Solo se permiten imágenes JPG, PNG, WebP o GIF.");
+      return;
+    }
+
+    if (file.size > FORUM_IMAGE_MAX_BYTES) {
+      setImageUploadError("La imagen no puede pasar de 5 MB.");
+      return;
+    }
+
+    setImageUploadError("");
+    setIsUploadingImage(true);
+
+    try {
+      const imagePath = getForumImagePath(uploadOwnerId, file);
+      const { error } = await supabase.storage
+        .from(FORUM_IMAGE_BUCKET)
+        .upload(imagePath, file, {
+          cacheControl: "31536000",
+          upsert: false,
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      const { data } = supabase.storage
+        .from(FORUM_IMAGE_BUCKET)
+        .getPublicUrl(imagePath);
+
+      if (!data.publicUrl) {
+        throw new Error("forum_image_public_url_missing");
+      }
+
+      const imageAlt = file.name.replace(/\.[^.]+$/, "").slice(0, 120);
+
+      editor
+        .chain()
+        .focus()
+        .insertContent(
+          `<img src="${escapeForumAttribute(
+            data.publicUrl,
+          )}" alt="${escapeForumAttribute(
+            imageAlt,
+          )}" title="${escapeForumAttribute(imageAlt)}" />`,
+        )
+        .run();
+    } catch (error) {
+      console.error("Failed to upload forum image", error);
+      setImageUploadError(
+        "No he podido subir la imagen. Revisa el bucket forum-images en Supabase.",
+      );
+    } finally {
+      setIsUploadingImage(false);
+    }
+  }
+
+  function insertPlainText(valueToInsert: string) {
+    editor?.chain().focus().insertContent(valueToInsert).run();
+  }
+
+  const toolbarButtonClassName =
+    "flex h-8 w-8 items-center justify-center rounded-full border border-[#d6d1c8] bg-[#fffdf8] text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-40";
+  const activeToolbarButtonClassName =
+    "border-red-700 bg-[#fff3ed] text-red-700 shadow-[inset_0_0_0_1px_rgba(185,28,28,0.25)] hover:bg-[#ffe7dc]";
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          title="Negrita"
+          aria-label="Negrita"
+          disabled={!editor}
+          onClick={() => editor?.chain().focus().toggleBold().run()}
+          className={`${toolbarButtonClassName} ${
+            editor?.isActive("bold") ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <Bold size={15} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
+          title="Cursiva"
+          aria-label="Cursiva"
+          disabled={!editor}
+          onClick={() => editor?.chain().focus().toggleItalic().run()}
+          className={`${toolbarButtonClassName} ${
+            editor?.isActive("italic") ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <Italic size={15} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
+          title="Subrayar"
+          aria-label="Subrayar"
+          disabled={!editor}
+          onClick={() => editor?.chain().focus().toggleUnderline().run()}
+          className={`${toolbarButtonClassName} ${
+            editor?.isActive("underline") ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <Underline size={15} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
+          title="Tachar"
+          aria-label="Tachar"
+          disabled={!editor}
+          onClick={() => editor?.chain().focus().toggleStrike().run()}
+          className={`${toolbarButtonClassName} ${
+            editor?.isActive("strike") ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <Strikethrough size={15} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
+          title="Enlace"
+          aria-label="Enlace"
+          disabled={!editor}
+          onClick={insertLink}
+          className={`${toolbarButtonClassName} ${
+            editor?.isActive("link") ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <LinkIcon size={15} strokeWidth={2.4} />
+        </button>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/gif,image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={uploadImage}
+        />
+        <button
+          type="button"
+          title="Imagen"
+          aria-label="Imagen"
+          disabled={!editor || isUploadingImage}
+          onClick={() => imageInputRef.current?.click()}
+          className={toolbarButtonClassName}
+        >
+          <ImageIcon size={15} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
+          title="Lista"
+          aria-label="Lista"
+          disabled={!editor}
+          onClick={() => editor?.chain().focus().toggleBulletList().run()}
+          className={`${toolbarButtonClassName} ${
+            editor?.isActive("bulletList") ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <List size={15} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
+          title="Lista numerada"
+          aria-label="Lista numerada"
+          disabled={!editor}
+          onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+          className={`${toolbarButtonClassName} ${
+            editor?.isActive("orderedList") ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <ListOrdered size={15} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
+          title="Cita"
+          aria-label="Cita"
+          disabled={!editor}
+          onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+          className={`${toolbarButtonClassName} ${
+            editor?.isActive("blockquote") ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <Quote size={15} strokeWidth={2.4} />
+        </button>
+        <span className="h-6 w-px bg-[#d6d1c8]" aria-hidden="true" />
+        <button
+          type="button"
+          title="Deshacer"
+          aria-label="Deshacer"
+          disabled={!editor}
+          onClick={() => editor?.chain().focus().undo().run()}
+          className={toolbarButtonClassName}
+        >
+          <Undo2 size={15} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
+          title="Rehacer"
+          aria-label="Rehacer"
+          disabled={!editor}
+          onClick={() => editor?.chain().focus().redo().run()}
+          className={toolbarButtonClassName}
+        >
+          <Redo2 size={15} strokeWidth={2.4} />
+        </button>
+      </div>
+
+      <div
+        className="editorial-field min-h-[190px] cursor-text overflow-auto text-[1rem] leading-7 [&_.ProseMirror]:min-h-[160px] [&_.ProseMirror]:outline-none [&_.ProseMirror_a]:font-bold [&_.ProseMirror_a]:text-red-700 [&_.ProseMirror_a]:underline [&_.ProseMirror_blockquote]:my-4 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-[#d6d1c8] [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_img]:my-4 [&_.ProseMirror_img]:max-h-[380px] [&_.ProseMirror_img]:w-auto [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:rounded-xl [&_.ProseMirror_img]:border [&_.ProseMirror_img]:border-[#d6d1c8] [&_.ProseMirror_img]:object-contain [&_.ProseMirror_li]:ml-5 [&_.ProseMirror_ol]:my-3 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left [&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0 [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-[#8b8379] [&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.ProseMirror_p]:mb-3 [&_.ProseMirror_ul]:my-3 [&_.ProseMirror_ul]:list-disc"
+        onClick={() => editor?.chain().focus().run()}
+      >
+        <EditorContent
+          editor={editor}
+        />
+      </div>
+
+      {(isUploadingImage || imageUploadError) && (
+        <p className="text-sm text-[#6a645c]">
+          {isUploadingImage ? "Subiendo imagen..." : imageUploadError}
+        </p>
+      )}
+
+      <SmilieBar onPick={insertPlainText} />
+    </div>
+  );
+}
+
+export default function ForumClient({
+  categorySlug,
+  profileOnly = false,
+  topicSlug,
+}: ForumClientProps) {
+  const router = useRouter();
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<ForumProfile | null>(null);
+  const [profileForm, setProfileForm] = useState<ProfileFormState>({
+    bio: "",
+    displayName: "",
+  });
+  const [categories, setCategories] = useState<ForumCategorySummary[]>([]);
+  const [currentCategory, setCurrentCategory] = useState<ForumCategory | null>(null);
+  const [topics, setTopics] = useState<ForumTopic[]>([]);
+  const [currentTopic, setCurrentTopic] = useState<ForumTopic | null>(null);
+  const [posts, setPosts] = useState<ForumPost[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeAction, setActiveAction] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [noticeMessage, setNoticeMessage] = useState("");
+  const [newTopicTitle, setNewTopicTitle] = useState("");
+  const [newTopicContent, setNewTopicContent] = useState("");
+  const [isTopicComposerOpen, setIsTopicComposerOpen] = useState(false);
+  const [isCategoryComposerOpen, setIsCategoryComposerOpen] = useState(false);
+  const [newCategoryTitle, setNewCategoryTitle] = useState("");
+  const [newCategoryDescription, setNewCategoryDescription] = useState("");
+  const [newCategoryColor, setNewCategoryColor] = useState("#d93e3e");
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [replyContent, setReplyContent] = useState("");
+  const [replyParent, setReplyParent] = useState<ForumPost | null>(null);
+  const [editingPostContent, setEditingPostContent] = useState("");
+  const [editingPostId, setEditingPostId] = useState<number | null>(null);
+
+  const user = session?.user ?? null;
+  const isAdmin = Boolean(
+    user?.email && ADMIN_EMAILS.has(normalizeEmail(user.email)) && isGoogleUser(user),
+  );
+  const postTree = useMemo(() => buildForumPostTree(posts), [posts]);
+  const isTopicView = Boolean(categorySlug && topicSlug);
+  const isCategoryView = Boolean(categorySlug && !topicSlug);
+  const googleAvatarUrl = user ? getForumUserAvatarUrl(user) : null;
+
+  function canManageCategory(category: ForumCategory | null | undefined) {
+    return Boolean(
+      category &&
+        user &&
+        (isAdmin || category.author_id === user.id),
+    );
+  }
+
+  async function login() {
+    rememberAuthReturnTo();
+
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: getCurrentAuthUrl(),
+      },
+    });
+  }
+
+  async function ensureForumProfile(targetUser: User) {
+    const googleAvatar = getForumUserAvatarUrl(targetUser);
+
+    const { data: existingProfile, error: profileError } = await supabase
+      .from("forum_profiles")
+      .select("*")
+      .eq("user_id", targetUser.id)
+      .maybeSingle();
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    if (existingProfile) {
+      if (existingProfile.avatar_url !== googleAvatar) {
+        const { data: updatedProfile, error: updateError } = await supabase
+          .from("forum_profiles")
+          .update({
+            avatar_url: googleAvatar,
+          })
+          .eq("user_id", targetUser.id)
+          .select("*")
+          .single();
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        return updatedProfile as ForumProfile;
+      }
+
+      return existingProfile as ForumProfile;
+    }
+
+    const fallbackProfile = {
+      avatar_url: googleAvatar,
+      bio: null,
+      display_name: getForumUserName(targetUser),
+      user_id: targetUser.id,
+    };
+
+    const { data: createdProfile, error: createError } = await supabase
+      .from("forum_profiles")
+      .upsert(fallbackProfile, {
+        onConflict: "user_id",
+      })
+      .select("*")
+      .single();
+
+    if (createError) {
+      throw createError;
+    }
+
+    return createdProfile as ForumProfile;
+  }
+
+  async function loadProfile(targetUser: User) {
+    const nextProfile = await ensureForumProfile(targetUser);
+
+    setProfile(nextProfile);
+    setProfileForm({
+      bio: nextProfile.bio ?? "",
+      displayName: nextProfile.display_name,
+    });
+  }
+
+  async function loadForumData() {
+    setIsLoading(true);
+    setErrorMessage("");
+
+    try {
+      const { data: categoryRows, error: categoriesError } = await supabase
+        .from("forum_categories")
+        .select("*")
+        .eq("is_active", true)
+        .order("sort_order", {
+          ascending: true,
+        });
+
+      if (categoriesError) {
+        throw categoriesError;
+      }
+
+      const nextCategories = (categoryRows ?? []) as ForumCategory[];
+
+      const { data: topicRows, error: topicsError } = await supabase
+        .from("forum_topics")
+        .select("*, forum_categories(*)")
+        .is("hidden_at", null)
+        .order("is_pinned", {
+          ascending: false,
+        })
+        .order("last_post_at", {
+          ascending: false,
+        })
+        .limit(100);
+
+      if (topicsError) {
+        throw topicsError;
+      }
+
+      const allTopics = (topicRows ?? []) as ForumTopic[];
+      const summaries = nextCategories.map((category) => {
+        const categoryTopics = allTopics.filter(
+          (topic) => topic.category_id === category.id,
+        );
+
+        return {
+          ...category,
+          latestTopic: categoryTopics[0] ?? null,
+          postCount: categoryTopics.reduce(
+            (total, topic) => total + Number(topic.post_count ?? 0),
+            0,
+          ),
+          threadCount: categoryTopics.reduce(
+            (total, topic) => total + Number(topic.reply_count ?? 0),
+            0,
+          ),
+          topicCount: categoryTopics.length,
+        };
+      });
+
+      setCategories(summaries);
+
+      const nextCurrentCategory =
+        categorySlug
+          ? nextCategories.find((category) => category.slug === categorySlug) ?? null
+          : null;
+
+      setCurrentCategory(nextCurrentCategory);
+
+      if (categorySlug && !nextCurrentCategory) {
+        setTopics([]);
+        setCurrentTopic(null);
+        setPosts([]);
+        setErrorMessage("No he encontrado esta categoría del foro.");
+        return;
+      }
+
+      if (topicSlug && nextCurrentCategory) {
+        const { data: topicRow, error: topicError } = await supabase
+          .from("forum_topics")
+          .select("*, forum_categories(*)")
+          .eq("category_id", nextCurrentCategory.id)
+          .eq("slug", topicSlug)
+          .maybeSingle();
+
+        if (topicError) {
+          throw topicError;
+        }
+
+        if (!topicRow) {
+          setCurrentTopic(null);
+          setPosts([]);
+          setErrorMessage("No he encontrado este hilo del foro.");
+          return;
+        }
+
+        const nextTopic = topicRow as ForumTopic;
+        setCurrentTopic(nextTopic);
+        setTopics([]);
+
+        const { data: postRows, error: postsError } = await supabase
+          .from("forum_posts")
+          .select("*")
+          .eq("topic_id", nextTopic.id)
+          .order("created_at", {
+            ascending: true,
+          });
+
+        if (postsError) {
+          throw postsError;
+        }
+
+        setPosts((postRows ?? []) as ForumPost[]);
+        return;
+      }
+
+      setCurrentTopic(null);
+      setPosts([]);
+      setTopics(
+        nextCurrentCategory
+          ? allTopics.filter((topic) => topic.category_id === nextCurrentCategory.id)
+          : allTopics.slice(0, 12),
+      );
+    } catch (error) {
+      console.error("Failed to load forum", error);
+      setErrorMessage(
+        "No he podido cargar el foro. Revisa que hayas ejecutado `supabase/forum.sql`.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let isActive = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!isActive) {
+        return;
+      }
+
+      setSession(data.session ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isActive) {
+        return;
+      }
+
+      setSession(nextSession ?? null);
+    });
+
+    return () => {
+      isActive = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadForumData();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categorySlug, topicSlug]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      if (!user) {
+        setProfile(null);
+        setProfileForm({
+          bio: "",
+          displayName: "",
+        });
+        return;
+      }
+
+      loadProfile(user).catch((error) => {
+        console.error("Failed to load forum profile", error);
+        setErrorMessage(
+          "No he podido cargar tu perfil del foro. Revisa que el SQL este aplicado.",
+        );
+      });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!isTopicComposerOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      document.getElementById("forum-post-composer")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isTopicComposerOpen]);
+
+  useEffect(() => {
+    if (!isCategoryComposerOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      document.getElementById("forum-category-composer")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isCategoryComposerOpen]);
+
+  function openTopicComposer() {
+    if (!user) {
+      void login();
+      return;
+    }
+
+    setIsTopicComposerOpen(true);
+  }
+
+  async function submitTopic(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!user || isSubmitting) {
+      return;
+    }
+
+    const title = newTopicTitle.trim();
+    const content = sanitizeForumContentForStorage(newTopicContent);
+    const categoryId = currentCategory?.id ?? Number(selectedCategoryId);
+    const category =
+      categories.find((item) => item.id === categoryId) ??
+      (currentCategory as ForumCategorySummary | null);
+
+    if (!categoryId || !category) {
+      setErrorMessage("Elige una categoría para el hilo.");
+      return;
+    }
+
+    if (title.length < 4 || !hasForumMeaningfulContent(content)) {
+      setErrorMessage("El título y el contenido necesitan un poco más de chicha.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      const nextProfile = await ensureForumProfile(user);
+      const nextAvatarUrl = getForumUserAvatarUrl(user);
+      const topicSlugValue = `${slugifyForumValue(title)}-${Date.now().toString(36)}`;
+
+      const { data: createdTopic, error: topicError } = await supabase
+        .from("forum_topics")
+        .insert({
+          author_avatar_url: nextAvatarUrl,
+          author_id: user.id,
+          author_name: nextProfile.display_name,
+          category_id: categoryId,
+          excerpt: getPlainExcerpt(content),
+          slug: topicSlugValue,
+          title,
+        })
+        .select("*")
+        .single();
+
+      if (topicError) {
+        throw topicError;
+      }
+
+      const topic = createdTopic as ForumTopic;
+      const { error: postError } = await supabase.from("forum_posts").insert({
+        author_avatar_url: nextAvatarUrl,
+        author_id: user.id,
+        author_name: nextProfile.display_name,
+        content,
+        parent_id: null,
+        topic_id: topic.id,
+      });
+
+      if (postError) {
+        throw postError;
+      }
+
+      setNewTopicTitle("");
+      setNewTopicContent("");
+      setIsTopicComposerOpen(false);
+      router.push(`/forum/${category.slug}/${topic.slug}`);
+    } catch (error) {
+      console.error("Failed to create forum topic", error);
+      setErrorMessage("No he podido crear el hilo.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  function closeCategoryComposer() {
+    setEditingCategoryId(null);
+    setNewCategoryTitle("");
+    setNewCategoryDescription("");
+    setNewCategoryColor("#d93e3e");
+    setIsCategoryComposerOpen(false);
+  }
+
+  function openCategoryCreate() {
+    if (!user) {
+      return;
+    }
+
+    setEditingCategoryId(null);
+    setNewCategoryTitle("");
+    setNewCategoryDescription("");
+    setNewCategoryColor("#d93e3e");
+    setIsCategoryComposerOpen(true);
+  }
+
+  function openCategoryEdit(category: ForumCategorySummary) {
+    if (!canManageCategory(category)) {
+      return;
+    }
+
+    setEditingCategoryId(category.id);
+    setNewCategoryTitle(category.title);
+    setNewCategoryDescription(category.description ?? "");
+    setNewCategoryColor(category.color);
+    setIsCategoryComposerOpen(true);
+  }
+
+  function applyCategoryUpdate(updatedCategory: ForumCategory) {
+    setCategories((currentCategories) =>
+      currentCategories.map((category) =>
+        category.id === updatedCategory.id
+          ? {
+              ...category,
+              ...updatedCategory,
+            }
+          : category,
+      ),
+    );
+    setCurrentCategory((category) =>
+      category?.id === updatedCategory.id
+        ? {
+            ...category,
+            ...updatedCategory,
+          }
+        : category,
+    );
+  }
+
+  async function submitCategory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!user || isSubmitting) {
+      return;
+    }
+
+    const title = newCategoryTitle.trim();
+    const description = newCategoryDescription.trim();
+
+    if (title.length < 2) {
+      setErrorMessage("La categoría necesita un nombre un poco más claro.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage("");
+    setNoticeMessage("");
+
+    try {
+      if (editingCategoryId) {
+        const editingCategory = categories.find(
+          (category) => category.id === editingCategoryId,
+        );
+
+        if (!canManageCategory(editingCategory)) {
+          throw new Error("forum_category_update_blocked");
+        }
+
+        const { data, error } = await supabase
+          .from("forum_categories")
+          .update({
+            color: newCategoryColor,
+            description: description || null,
+            title,
+          })
+          .eq("id", editingCategoryId)
+          .select("*")
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!data) {
+          throw new Error("forum_category_update_blocked");
+        }
+
+        applyCategoryUpdate(data as ForumCategory);
+        closeCategoryComposer();
+        setNoticeMessage("Categoría guardada.");
+        return;
+      }
+
+      const categorySlugValue = `${slugifyForumValue(title)}-${Date.now().toString(36)}`;
+      const { data, error } = await supabase
+        .from("forum_categories")
+        .insert({
+          author_id: user.id,
+          color: newCategoryColor,
+          description: description || null,
+          is_active: true,
+          slug: categorySlugValue,
+          sort_order: 1000,
+          title,
+        })
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const category = data as ForumCategory;
+
+      closeCategoryComposer();
+      await loadForumData();
+      router.push(`/forum/${category.slug}`);
+    } catch (error) {
+      console.error("Failed to save forum category", error);
+      const supabaseErrorCode = getSupabaseErrorCode(error);
+      const isBlockedCategoryUpdate =
+        error instanceof Error &&
+        error.message === "forum_category_update_blocked";
+      const isMissingCategoryOwnerColumn = supabaseErrorCode === "PGRST204";
+
+      setErrorMessage(
+        isMissingCategoryOwnerColumn
+          ? "Falta la columna author_id en forum_categories. Ejecuta el SQL de ownership del foro en Supabase."
+          : editingCategoryId
+          ? isBlockedCategoryUpdate
+            ? "Supabase no ha actualizado la categoría. Revisa la policy RLS de forum_categories."
+            : "No he podido guardar la categoría."
+          : "No he podido crear la categoría.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function deleteCategory(category: ForumCategorySummary) {
+    if (!canManageCategory(category)) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `¿Borrar la categoría "${category.title}" y todos sus hilos?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setActiveAction(`category-delete-${category.id}`);
+    setErrorMessage("");
+    setNoticeMessage("");
+
+    try {
+      const { data, error } = await supabase
+        .from("forum_categories")
+        .delete()
+        .eq("id", category.id)
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        throw new Error("forum_category_delete_blocked");
+      }
+
+      setCategories((currentCategories) =>
+        currentCategories.filter((item) => item.id !== category.id),
+      );
+      setTopics((currentTopics) =>
+        currentTopics.filter((topic) => topic.category_id !== category.id),
+      );
+      setNoticeMessage("Categoría borrada.");
+
+      if (currentCategory?.id === category.id) {
+        router.push("/forum");
+      }
+    } catch (error) {
+      console.error("Failed to delete forum category", error);
+      setErrorMessage("No he podido borrar la categoría.");
+    } finally {
+      setActiveAction("");
+    }
+  }
+
+  async function moveCategory(categoryId: number, direction: -1 | 1) {
+    if (!isAdmin) {
+      return;
+    }
+
+    const currentIndex = categories.findIndex(
+      (category) => category.id === categoryId,
+    );
+    const targetIndex = currentIndex + direction;
+
+    if (
+      currentIndex < 0 ||
+      targetIndex < 0 ||
+      targetIndex >= categories.length
+    ) {
+      return;
+    }
+
+    const previousCategories = categories;
+    const nextCategories = [...categories];
+    const [movedCategory] = nextCategories.splice(currentIndex, 1);
+
+    nextCategories.splice(targetIndex, 0, movedCategory);
+
+    const reorderedCategories = nextCategories.map((category, index) => ({
+      ...category,
+      sort_order: (index + 1) * 10,
+    }));
+
+    setCategories(reorderedCategories);
+    setActiveAction(`category-order-${categoryId}`);
+    setErrorMessage("");
+    setNoticeMessage("");
+
+    try {
+      const results = await Promise.all(
+        reorderedCategories.map((category) =>
+          supabase
+            .from("forum_categories")
+            .update({
+              sort_order: category.sort_order,
+            })
+            .eq("id", category.id),
+        ),
+      );
+      const failedUpdate = results.find((result) => result.error);
+
+      if (failedUpdate?.error) {
+        throw failedUpdate.error;
+      }
+
+      setNoticeMessage("Categorías reordenadas.");
+    } catch (error) {
+      console.error("Failed to reorder forum categories", error);
+      setCategories(previousCategories);
+      setErrorMessage("No he podido reordenar las categorías.");
+    } finally {
+      setActiveAction("");
+    }
+  }
+
+  async function submitReply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!user || !currentTopic || isSubmitting) {
+      return;
+    }
+
+    const content = sanitizeForumContentForStorage(replyContent);
+
+    if (!hasForumMeaningfulContent(content)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      const nextProfile = await ensureForumProfile(user);
+      const defaultReplyParent = postTree[0] ?? null;
+      const replyTarget = replyParent ?? defaultReplyParent;
+      const { error } = await supabase.from("forum_posts").insert({
+        author_avatar_url: getForumUserAvatarUrl(user),
+        author_id: user.id,
+        author_name: nextProfile.display_name,
+        content,
+        parent_id: replyTarget?.id ?? null,
+        topic_id: currentTopic.id,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setReplyContent("");
+      setReplyParent(null);
+      await loadForumData();
+    } catch (error) {
+      console.error("Failed to post forum reply", error);
+      setErrorMessage("No he podido publicar la respuesta.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!user || isSubmitting) {
+      return;
+    }
+
+    const displayName = profileForm.displayName.trim();
+
+    if (displayName.length < 2) {
+      setErrorMessage("El nombre necesita al menos 2 caracteres.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage("");
+    setNoticeMessage("");
+
+    try {
+      const { data, error } = await supabase
+        .from("forum_profiles")
+        .upsert(
+          {
+            avatar_url: googleAvatarUrl,
+            bio: profileForm.bio.trim() || null,
+            display_name: displayName,
+            user_id: user.id,
+          },
+          {
+            onConflict: "user_id",
+          },
+        )
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      setProfile(data as ForumProfile);
+      setNoticeMessage("Perfil guardado.");
+    } catch (error) {
+      console.error("Failed to save forum profile", error);
+      setErrorMessage("No he podido guardar el perfil.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function updateTopicModeration(values: Partial<ForumTopic>) {
+    if (!isAdmin || !currentTopic || !user) {
+      return;
+    }
+
+    setActiveAction("topic");
+    setErrorMessage("");
+
+    try {
+      const { error } = await supabase
+        .from("forum_topics")
+        .update(values)
+        .eq("id", currentTopic.id);
+
+      if (error) {
+        throw error;
+      }
+
+      if (values.hidden_at) {
+        const category = currentCategory ?? getForumCategoryFromTopic(currentTopic);
+        router.push(category ? `/forum/${category.slug}` : "/forum");
+        return;
+      }
+
+      await loadForumData();
+    } catch (error) {
+      console.error("Failed to moderate forum topic", error);
+      setErrorMessage("No he podido moderar este hilo.");
+    } finally {
+      setActiveAction("");
+    }
+  }
+
+  async function updatePostModeration(post: ForumPost, hidden: boolean) {
+    if (!isAdmin || !user) {
+      return;
+    }
+
+    setActiveAction(`post-${post.id}`);
+    setErrorMessage("");
+
+    try {
+      const { error } = await supabase
+        .from("forum_posts")
+        .update({
+          hidden_at: hidden ? new Date().toISOString() : null,
+          hidden_by: hidden ? user.id : null,
+        })
+        .eq("id", post.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await loadForumData();
+    } catch (error) {
+      console.error("Failed to moderate forum post", error);
+      setErrorMessage("No he podido moderar esta respuesta.");
+    } finally {
+      setActiveAction("");
+    }
+  }
+
+  async function deleteCurrentTopic() {
+    if (!user || !currentTopic || (!isAdmin && currentTopic.author_id !== user.id)) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "¿Borrar este hilo y todas sus respuestas?",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const category = currentCategory ?? getForumCategoryFromTopic(currentTopic);
+    let deleteQuery = supabase
+      .from("forum_topics")
+      .delete()
+      .eq("id", currentTopic.id);
+
+    if (!isAdmin) {
+      deleteQuery = deleteQuery.eq("author_id", user.id);
+    }
+
+    setActiveAction("delete-topic");
+    setErrorMessage("");
+    setNoticeMessage("");
+
+    try {
+      const { error } = await deleteQuery;
+
+      if (error) {
+        throw error;
+      }
+
+      router.push(category ? `/forum/${category.slug}` : "/forum");
+    } catch (error) {
+      console.error("Failed to delete forum topic", error);
+      setErrorMessage("No he podido borrar el hilo.");
+    } finally {
+      setActiveAction("");
+    }
+  }
+
+  async function deletePost(post: ForumPost) {
+    if (!user || (!isAdmin && post.author_id !== user.id)) {
+      return;
+    }
+
+    const confirmed = window.confirm("¿Borrar esta respuesta?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    let deleteQuery = supabase.from("forum_posts").delete().eq("id", post.id);
+
+    if (!isAdmin) {
+      deleteQuery = deleteQuery.eq("author_id", user.id);
+    }
+
+    setActiveAction(`delete-post-${post.id}`);
+    setErrorMessage("");
+    setNoticeMessage("");
+
+    try {
+      const { error } = await deleteQuery;
+
+      if (error) {
+        throw error;
+      }
+
+      if (editingPostId === post.id) {
+        setEditingPostId(null);
+        setEditingPostContent("");
+      }
+
+      setNoticeMessage("Respuesta borrada.");
+      await loadForumData();
+    } catch (error) {
+      console.error("Failed to delete forum post", error);
+      setErrorMessage("No he podido borrar la respuesta.");
+    } finally {
+      setActiveAction("");
+    }
+  }
+
+  function startPostEdit(post: ForumPost) {
+    setReplyParent(null);
+    setEditingPostId(post.id);
+    setEditingPostContent(sanitizeForumContentForStorage(post.content));
+  }
+
+  async function savePostEdit(post: ForumPost) {
+    if (!user || post.author_id !== user.id || isSubmitting) {
+      return;
+    }
+
+    const content = sanitizeForumContentForStorage(editingPostContent);
+
+    if (!hasForumMeaningfulContent(content)) {
+      setErrorMessage("El contenido necesita un poco más de texto.");
+      return;
+    }
+
+    setActiveAction(`edit-${post.id}`);
+    setErrorMessage("");
+    setNoticeMessage("");
+
+    try {
+      const { error } = await supabase
+        .from("forum_posts")
+        .update({
+          content,
+        })
+        .eq("id", post.id)
+        .eq("author_id", user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      setEditingPostId(null);
+      setEditingPostContent("");
+      setNoticeMessage("Cambios guardados.");
+      await loadForumData();
+    } catch (error) {
+      console.error("Failed to edit forum post", error);
+      setErrorMessage("No he podido guardar los cambios.");
+    } finally {
+      setActiveAction("");
+    }
+  }
+
+  async function reportPost(post: ForumPost) {
+    if (!user) {
+      await login();
+      return;
+    }
+
+    setActiveAction(`report-${post.id}`);
+    setNoticeMessage("");
+    setErrorMessage("");
+
+    try {
+      const { error } = await supabase.from("forum_post_reports").insert({
+        post_id: post.id,
+        reason: "Reportado desde la web",
+        reporter_id: user.id,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setNoticeMessage("Reporte enviado. Gracias por echar una mano.");
+    } catch {
+      setNoticeMessage("Ya habías reportado este contenido o no se pudo enviar.");
+    } finally {
+      setActiveAction("");
+    }
+  }
+
+  function renderTopicListItem(topic: ForumTopic) {
+    const category = getTopicCategory(topic, categories);
+
+    return (
+      <article
+        key={topic.id}
+        className="border-b border-[#d6d1c8] py-5 last:border-b-0"
+      >
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7a746b]">
+              {topic.is_pinned && <span>Fijado</span>}
+              {topic.is_locked && <span>Cerrado</span>}
+              {category && (
+                <Link href={`/forum/${category.slug}`} className="hover:text-[#111111]">
+                  {category.title}
+                </Link>
+              )}
+            </div>
+
+            <Link
+              href={getTopicUrl(topic, categories)}
+              className="mt-2 block newspaper-title text-[clamp(1.65rem,3vw,2.4rem)] font-black leading-[0.98] hover:opacity-70"
+            >
+              {topic.title}
+            </Link>
+
+            {topic.excerpt && (
+              <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#5f5952]">
+                {topic.excerpt}
+              </p>
+            )}
+
+            <div className="mt-4 flex items-center gap-3 text-sm text-[#6a645c]">
+              <ForumAvatar
+                avatarUrl={topic.author_avatar_url}
+                label={topic.author_name}
+                size="sm"
+              />
+              <span className="min-w-0 truncate">
+                {topic.author_name} · {formatForumDate(topic.last_post_at)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 gap-2 text-center">
+            <div className="rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2">
+              <p className="text-lg font-black">{topic.reply_count}</p>
+              <p className="text-[0.62rem] uppercase tracking-[0.14em] text-[#7a746b]">
+                respuestas
+              </p>
+            </div>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
+  function renderCategoryListItem(category: ForumCategorySummary) {
+    const topicLabel = formatForumCount(category.topicCount, "hilo", "hilos");
+
+    return (
+      <Link
+        key={category.id}
+        href={`/forum/${category.slug}`}
+        className="editorial-card block rounded-[1.6rem] px-5 py-5 transition hover:-translate-y-px hover:shadow-[0_16px_34px_rgba(17,17,17,0.08)] sm:px-6"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <span
+                className="h-3 w-3 shrink-0 rounded-full"
+                style={{ background: category.color }}
+              />
+              <h3 className="text-lg font-black leading-tight text-[#111111]">
+                {category.title}
+              </h3>
+            </div>
+            {category.description && (
+              <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#5f5952]">
+                {category.description}
+              </p>
+            )}
+          </div>
+
+          <div className="shrink-0 rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-center">
+            <p className="text-lg font-black leading-none text-[#111111]">
+              {category.topicCount}
+            </p>
+            <p className="mt-1 text-[0.62rem] uppercase tracking-[0.14em] text-[#7a746b]">
+              {category.topicCount === 1 ? "hilo" : "hilos"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 text-sm text-[#6a645c]">
+          <span>{topicLabel}</span>
+        </div>
+      </Link>
+    );
+  }
+
+  function renderTopicComposer() {
+    if (categories.length === 0) {
+      return null;
+    }
+
+    return (
+      <section
+        id="forum-post-composer"
+        className="editorial-card scroll-mt-24 rounded-[2rem] px-5 py-6 sm:px-7"
+      >
+        {!user ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm leading-6 text-[#5f5952]">
+              Entra con Google para publicar en el foro.
+            </p>
+            <button type="button" onClick={login} className="editorial-cta">
+              Login con Google
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-black text-[#111111]">
+                Escribir hilo
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsTopicComposerOpen(false)}
+                className="editorial-link-button !px-0 !py-0"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <form onSubmit={submitTopic} className="mt-6 space-y-4">
+              {!currentCategory && (
+                <select
+                  value={selectedCategoryId}
+                  onChange={(event) => setSelectedCategoryId(event.target.value)}
+                  className="editorial-field"
+                  required
+                >
+                  <option value="">Categoría</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.title}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <input
+                value={newTopicTitle}
+                onChange={(event) => setNewTopicTitle(event.target.value)}
+                placeholder="Título del hilo"
+                className="editorial-field"
+                maxLength={140}
+                required
+              />
+
+              <RichTextEditor
+                value={newTopicContent}
+                onChange={setNewTopicContent}
+                placeholder="Contenido del hilo..."
+                uploadOwnerId={user.id}
+              />
+
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="editorial-cta editorial-cta-dark"
+                >
+                  {isSubmitting ? "Publicando..." : "Publicar hilo"}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function renderCategoryComposer() {
+    if (!user) {
+      return null;
+    }
+
+    const isEditingCategory = Boolean(editingCategoryId);
+
+    return (
+      <section
+        id="forum-category-composer"
+        className="editorial-card scroll-mt-24 rounded-[2rem] px-5 py-6 sm:px-7"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-black text-[#111111]">
+            {isEditingCategory ? "Editar categoría" : "Añadir categoría"}
+          </h2>
+          <button
+            type="button"
+            onClick={closeCategoryComposer}
+            className="editorial-link-button !px-0 !py-0"
+          >
+            Cerrar
+          </button>
+        </div>
+
+        <form onSubmit={submitCategory} className="mt-6 space-y-4">
+          <input
+            value={newCategoryTitle}
+            onChange={(event) => setNewCategoryTitle(event.target.value)}
+            placeholder="Nombre de categoría"
+            className="editorial-field"
+            maxLength={60}
+            required
+          />
+          <textarea
+            value={newCategoryDescription}
+            onChange={(event) => setNewCategoryDescription(event.target.value)}
+            placeholder="Descripcion breve"
+            className="editorial-field min-h-[110px] resize-y"
+            maxLength={180}
+          />
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[#7a746b]">
+              <span>Color</span>
+              <input
+                type="color"
+                value={newCategoryColor}
+                onChange={(event) => setNewCategoryColor(event.target.value)}
+                className="h-9 w-12 cursor-pointer rounded border border-[#d6d1c8] bg-transparent"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="editorial-cta editorial-cta-dark"
+            >
+              {isSubmitting
+                ? isEditingCategory
+                  ? "Guardando..."
+                  : "Creando..."
+                : isEditingCategory
+                  ? "Guardar categoría"
+                  : "Crear categoría"}
+            </button>
+          </div>
+        </form>
+      </section>
+    );
+  }
+
+  function renderPost(post: ForumPostNode, depth = 0): React.ReactNode {
+    const isHidden = Boolean(post.hidden_at);
+    const canReply = Boolean(user && currentTopic && !currentTopic.is_locked && !isHidden);
+    const isOwnPost = user?.id === post.author_id;
+    const isEditingPost = editingPostId === post.id;
+    const canDeletePost = Boolean(
+      depth > 0 &&
+        user &&
+        !isEditingPost &&
+        (isOwnPost || isAdmin),
+    );
+
+    return (
+      <div
+        key={post.id}
+        className={depth > 0 ? "ml-4 mt-5 border-l border-[#d6d1c8] pl-4 sm:ml-8 sm:pl-6" : ""}
+      >
+        <article
+          className={`rounded-[1.75rem] border px-5 py-5 shadow-[0_14px_32px_rgba(17,17,17,0.05)] sm:px-7 ${
+            isHidden
+              ? "border-[#d6d1c8] bg-[#ece8df]/80"
+              : "border-[#d6d1c8] bg-[#fffdf8]"
+          }`}
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <ForumAvatar
+                avatarUrl={post.author_avatar_url}
+                label={post.author_name}
+                size="md"
+              />
+              <div className="min-w-0">
+                <p className="truncate text-[1.02rem] font-semibold">
+                  {post.author_name}
+                </p>
+                <p className="mt-1 text-xs uppercase tracking-[0.16em] text-[#7a746b]">
+                  {formatForumDate(post.created_at)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1">
+              {canReply && (
+                <button
+                  type="button"
+                  onClick={() => setReplyParent(post)}
+                  className="editorial-link-button"
+                >
+                  Responder
+                </button>
+              )}
+
+              {isOwnPost && !isHidden && !isEditingPost && (
+                <button
+                  type="button"
+                  onClick={() => startPostEdit(post)}
+                  className="editorial-link-button"
+                >
+                  Editar
+                </button>
+              )}
+
+              {user && !isOwnPost && !isHidden && (
+                <button
+                  type="button"
+                  onClick={() => void reportPost(post)}
+                  disabled={activeAction === `report-${post.id}`}
+                  className="editorial-link-button disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Reportar
+                </button>
+              )}
+
+              {canDeletePost && (
+                <button
+                  type="button"
+                  onClick={() => void deletePost(post)}
+                  disabled={activeAction === `delete-post-${post.id}`}
+                  className="editorial-link-button disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Borrar
+                </button>
+              )}
+
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => void updatePostModeration(post, !isHidden)}
+                  disabled={activeAction === `post-${post.id}`}
+                  className="editorial-link-button disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isHidden ? "Restaurar" : "Ocultar"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {isHidden && !isAdmin ? (
+            <p className="mt-5 text-sm italic text-[#6a645c]">
+              Mensaje oculto por moderacion.
+            </p>
+          ) : isEditingPost ? (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void savePostEdit(post);
+              }}
+              className="mt-5 space-y-4"
+            >
+                <RichTextEditor
+                  value={editingPostContent}
+                  onChange={setEditingPostContent}
+                  placeholder={depth === 0 ? "Edita el hilo..." : "Edita la respuesta..."}
+                  uploadOwnerId={user?.id}
+                />
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingPostId(null);
+                    setEditingPostContent("");
+                  }}
+                  className="editorial-link-button"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={activeAction === `edit-${post.id}`}
+                  className="editorial-cta editorial-cta-dark"
+                >
+                  {activeAction === `edit-${post.id}` ? "Guardando..." : "Guardar"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="mt-5">
+              {isHidden && isAdmin && (
+                <span className="mb-3 block text-sm font-bold uppercase tracking-[0.16em] text-red-700">
+                  Oculto
+                </span>
+              )}
+              <div
+                className="break-words text-[1.03rem] leading-8 text-[#222] [&_a]:font-bold [&_a]:text-red-700 [&_a]:underline [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-[#d6d1c8] [&_blockquote]:pl-4 [&_img]:my-4 [&_img]:max-h-[520px] [&_img]:w-auto [&_img]:max-w-full [&_img]:rounded-xl [&_img]:border [&_img]:border-[#d6d1c8] [&_img]:object-contain [&_li]:ml-5 [&_ol]:my-3 [&_ol]:list-decimal [&_p]:mb-3 [&_strong]:font-black [&_ul]:my-3 [&_ul]:list-disc"
+                dangerouslySetInnerHTML={{
+                  __html: renderForumContentHtml(post.content),
+                }}
+              />
+            </div>
+          )}
+        </article>
+
+        {post.replies.length > 0 && (
+          <div className="mt-5">
+            {post.replies.map((reply) => renderPost(reply, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function renderProfileView() {
+    return (
+      <section className="mx-auto max-w-3xl px-6 py-12">
+        <div className="mb-8">
+          <Link href="/forum" className="editorial-link-button !px-0">
+            Volver al foro
+          </Link>
+          <h1 className="mt-4 text-2xl font-black leading-tight sm:text-3xl">
+            Perfil
+          </h1>
+        </div>
+
+        {!user ? (
+          <div className="editorial-card rounded-[2rem] px-6 py-8 text-center">
+            <p className="text-lg text-[#4f4a44]">
+              Entra con Google para crear tu perfil del foro.
+            </p>
+            <button type="button" onClick={login} className="editorial-cta mt-6">
+              Login con Google
+            </button>
+          </div>
+        ) : (
+          <form
+            onSubmit={saveProfile}
+            className="editorial-card rounded-[2rem] px-6 py-7 sm:px-8"
+          >
+            <div className="flex items-center gap-4">
+              <ForumAvatar
+                avatarUrl={googleAvatarUrl}
+                label={profileForm.displayName || getForumUserName(user)}
+                size="lg"
+              />
+              <div>
+                <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#7a746b]">
+                  Google
+                </p>
+                <p className="mt-1 text-sm text-[#6a645c]">
+                  {user.email}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-7 space-y-4">
+              <input
+                value={profileForm.displayName}
+                onChange={(event) =>
+                  setProfileForm((currentValue) => ({
+                    ...currentValue,
+                    displayName: event.target.value,
+                  }))
+                }
+                placeholder="Nombre visible"
+                className="editorial-field"
+                maxLength={80}
+                required
+              />
+              <textarea
+                value={profileForm.bio}
+                onChange={(event) =>
+                  setProfileForm((currentValue) => ({
+                    ...currentValue,
+                    bio: event.target.value,
+                  }))
+                }
+                placeholder="Bio breve"
+                className="editorial-field min-h-[120px] resize-y"
+                maxLength={280}
+              />
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="editorial-cta editorial-cta-dark"
+              >
+                {isSubmitting ? "Guardando..." : "Guardar perfil"}
+              </button>
+            </div>
+
+            {profile && (
+              <p className="mt-5 text-sm text-[#6a645c]">
+                Perfil activo desde {formatForumDate(profile.created_at)}.
+              </p>
+            )}
+          </form>
+        )}
+      </section>
+    );
+  }
+
+  function renderForumHeader() {
+    return (
+      <section className="border-b border-[#d6d1c8] bg-[#fffdf8]">
+        <div className="mx-auto max-w-7xl px-6 py-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-red-700">
+                Comunidad
+              </p>
+              <h1 className="mt-2 text-2xl font-black leading-tight sm:text-3xl">
+                Foro Ohayers
+              </h1>
+            </div>
+
+            {!user && (
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={login} className="editorial-cta">
+                  Login con Google
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (profileOnly) {
+    return (
+      <>
+        {renderForumHeader()}
+        {renderStatusMessages()}
+        {renderProfileView()}
+      </>
+    );
+  }
+
+  function renderStatusMessages() {
+    if (!errorMessage && !noticeMessage) {
+      return null;
+    }
+
+    return (
+      <div className="mx-auto mt-6 max-w-7xl px-6">
+        {errorMessage && (
+          <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMessage}
+          </p>
+        )}
+        {noticeMessage && (
+          <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {noticeMessage}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {renderForumHeader()}
+      {renderStatusMessages()}
+
+      <main className="mx-auto grid max-w-7xl gap-10 px-6 py-12 lg:grid-cols-[1fr_360px]">
+        <section className="min-w-0">
+          {user && isCategoryComposerOpen && (
+            <div className="mb-8">{renderCategoryComposer()}</div>
+          )}
+
+          {isLoading ? (
+            null
+          ) : isTopicView && currentTopic ? (
+            <>
+              <div className="mb-8">
+                <Link
+                  href={
+                    currentCategory ? `/forum/${currentCategory.slug}` : "/forum"
+                  }
+                  className="editorial-link-button !px-0"
+                >
+                  Volver a {currentCategory?.title ?? "foro"}
+                </Link>
+
+                <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7a746b]">
+                      {currentTopic.is_pinned && <span>Fijado</span>}
+                      {currentTopic.is_locked && <span>Cerrado</span>}
+                      {currentCategory && <span>{currentCategory.title}</span>}
+                    </div>
+                    <h2 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">
+                      {currentTopic.title}
+                    </h2>
+                    <p className="mt-4 text-sm text-[#6a645c]">
+                      {currentTopic.reply_count} respuestas · actualizado{" "}
+                      {formatForumDate(currentTopic.last_post_at)}
+                    </p>
+                  </div>
+
+                  {(isAdmin || user?.id === currentTopic.author_id) && (
+                    <div className="flex flex-wrap gap-2">
+                      {isAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={activeAction === "topic"}
+                            onClick={() =>
+                              void updateTopicModeration({
+                                is_locked: !currentTopic.is_locked,
+                              })
+                            }
+                            className="editorial-link-button"
+                          >
+                            {currentTopic.is_locked ? "Abrir" : "Cerrar"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={activeAction === "topic"}
+                            onClick={() =>
+                              void updateTopicModeration({
+                                hidden_at: new Date().toISOString(),
+                                hidden_by: user?.id ?? null,
+                              })
+                            }
+                            className="editorial-link-button"
+                          >
+                            Ocultar hilo
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        disabled={activeAction === "delete-topic"}
+                        onClick={() => void deleteCurrentTopic()}
+                        className="editorial-link-button disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Borrar hilo
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                {postTree.map((post) => renderPost(post))}
+              </div>
+
+              <section className="editorial-card mt-10 rounded-[2rem] px-5 py-6 sm:px-7">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xl font-semibold newspaper-title">
+                      {replyParent
+                        ? `Respuesta para ${replyParent.author_name}`
+                        : currentTopic.is_locked
+                          ? "Hilo cerrado"
+                          : "Responder"}
+                    </p>
+                    <p className="mt-2 text-sm text-[#6a645c]">
+                      {user
+                        ? `Escribiendo como ${profile?.display_name ?? getForumUserName(user)}`
+                        : "Entra con Google para escribir una respuesta."}
+                    </p>
+                  </div>
+
+                  {replyParent && (
+                    <button
+                      type="button"
+                      onClick={() => setReplyParent(null)}
+                      className="editorial-link-button"
+                    >
+                      Cancelar respuesta
+                    </button>
+                  )}
+                </div>
+
+                {!user ? (
+                  <button type="button" onClick={login} className="editorial-cta mt-5">
+                    Login con Google
+                  </button>
+                ) : currentTopic.is_locked && !isAdmin ? (
+                  <p className="mt-5 text-sm text-[#6a645c]">
+                    Este hilo está cerrado a nuevas respuestas.
+                  </p>
+                ) : (
+                  <form onSubmit={submitReply} className="mt-6 space-y-4">
+                    <RichTextEditor
+                      value={replyContent}
+                      onChange={setReplyContent}
+                      placeholder="Escribe una respuesta..."
+                      uploadOwnerId={user.id}
+                    />
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="editorial-cta editorial-cta-dark"
+                      >
+                        {isSubmitting ? "Publicando..." : "Publicar respuesta"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </section>
+            </>
+          ) : (
+            <>
+              {isCategoryView && currentCategory ? (
+                <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <Link href="/forum" className="editorial-link-button !px-0">
+                      Todas las categorías
+                    </Link>
+                    <h2 className="mt-4 text-2xl font-black leading-tight sm:text-3xl">
+                      {currentCategory.title}
+                    </h2>
+                    {currentCategory.description && (
+                      <p className="mt-4 max-w-2xl text-sm leading-7 text-[#5f5952] sm:text-base">
+                        {currentCategory.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {topics.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={openTopicComposer}
+                      className="editorial-cta editorial-cta-dark self-start !px-4 !py-2 !text-[0.68rem]"
+                    >
+                      Crear hilo
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-2xl font-black leading-tight sm:text-3xl">
+                    Categorías
+                  </h2>
+
+                  <div className="flex flex-wrap gap-2">
+                    {user && !isCategoryComposerOpen && (
+                      <button
+                        type="button"
+                        onClick={openCategoryCreate}
+                        className="editorial-link-button"
+                      >
+                        Añadir categoría
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {isCategoryView && isTopicComposerOpen && (
+                <div className="mb-8">{renderTopicComposer()}</div>
+              )}
+
+              {isCategoryView ? (
+                <div className="editorial-card rounded-[2rem] px-5 py-4 sm:px-7">
+                  {topics.length > 0 ? (
+                    topics.map((topic) => renderTopicListItem(topic))
+                  ) : (
+                    <div className="py-8 text-center text-[#5f5952]">
+                      <p>Todavía no hay hilos por aquí.</p>
+                      <button
+                        type="button"
+                        onClick={openTopicComposer}
+                        className="editorial-cta editorial-cta-dark mt-5 !px-4 !py-2 !text-[0.68rem]"
+                      >
+                        Crear hilo
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {categories.length > 0 ? (
+                    categories.map((category) => renderCategoryListItem(category))
+                  ) : (
+                    <div className="editorial-card rounded-[2rem] px-5 py-8 text-center text-[#5f5952] sm:px-7">
+                      <p>Todavía no hay categorías por aquí.</p>
+                      {user ? (
+                        <button
+                          type="button"
+                          onClick={openCategoryCreate}
+                          className="editorial-cta editorial-cta-dark mt-5 !px-4 !py-2 !text-[0.68rem]"
+                        >
+                          Añadir categoría
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={login}
+                          className="editorial-cta mt-5"
+                        >
+                          Login con Google
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        <aside className="space-y-6 lg:sticky lg:top-24 lg:self-start">
+          <section className="editorial-card rounded-[2rem] px-5 py-6 lg:flex lg:max-h-[calc(100vh-7rem)] lg:flex-col lg:overflow-hidden">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xl font-black leading-tight">
+                Categorías
+              </h2>
+              {user && (
+                <button
+                  type="button"
+                  title="Añadir categoría"
+                  aria-label="Añadir categoría"
+                  onClick={openCategoryCreate}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-[#111111] transition hover:bg-[#f5efe4]"
+                >
+                  <Plus size={15} strokeWidth={2.4} />
+                </button>
+              )}
+            </div>
+
+            <div className="mt-5 space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+              {categories.map((category, index) => {
+                const isCategoryReordering =
+                  activeAction.startsWith("category-order-");
+                const canManageCurrentCategory = canManageCategory(category);
+                const isDeletingCategory =
+                  activeAction === `category-delete-${category.id}`;
+
+                return (
+                  <div
+                    key={category.id}
+                    className="rounded-[1.35rem] border border-[#d6d1c8] bg-[#fffdf8] px-4 py-4 transition hover:-translate-y-px hover:shadow-[0_12px_28px_rgba(17,17,17,0.08)]"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span
+                        className="mt-1 h-3 w-3 shrink-0 rounded-full"
+                        style={{ background: category.color }}
+                      />
+                      <Link
+                        href={`/forum/${category.slug}`}
+                        className="min-w-0 flex-1"
+                      >
+                        <p className="font-bold text-[#111111]">
+                          {category.title}
+                        </p>
+                        {category.description && (
+                          <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#6a645c]">
+                            {category.description}
+                          </p>
+                        )}
+                        <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[#7a746b]">
+                          {formatForumCount(category.topicCount, "hilo", "hilos")} ·{" "}
+                          {formatForumCount(category.threadCount, "respuesta", "respuestas")}
+                        </p>
+                      </Link>
+
+                      {(canManageCurrentCategory || isAdmin) && (
+                        <div className="flex shrink-0 flex-col gap-1">
+                          {canManageCurrentCategory && (
+                            <>
+                              <button
+                                type="button"
+                                title={`Editar ${category.title}`}
+                                aria-label={`Editar ${category.title}`}
+                                disabled={
+                                  activeAction.startsWith("category-order-") ||
+                                  isDeletingCategory
+                                }
+                                onClick={() => openCategoryEdit(category)}
+                                className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
+                              >
+                                <Pencil size={13} strokeWidth={2.3} />
+                              </button>
+                              <button
+                                type="button"
+                                title={`Borrar ${category.title}`}
+                                aria-label={`Borrar ${category.title}`}
+                                disabled={
+                                  activeAction.startsWith("category-order-") ||
+                                  isDeletingCategory
+                                }
+                                onClick={() => void deleteCategory(category)}
+                                className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
+                              >
+                                <Trash2 size={13} strokeWidth={2.3} />
+                              </button>
+                            </>
+                          )}
+                          {isAdmin && (
+                            <>
+                              <button
+                                type="button"
+                                title={`Subir ${category.title}`}
+                                aria-label={`Subir ${category.title}`}
+                                disabled={index === 0 || isCategoryReordering}
+                                onClick={() => void moveCategory(category.id, -1)}
+                                className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                title={`Bajar ${category.title}`}
+                                aria-label={`Bajar ${category.title}`}
+                                disabled={
+                                  index === categories.length - 1 ||
+                                  isCategoryReordering
+                                }
+                                onClick={() => void moveCategory(category.id, 1)}
+                                className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
+                              >
+                                ↓
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </aside>
+      </main>
+    </>
+  );
+}

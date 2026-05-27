@@ -265,7 +265,7 @@ export default async function Home() {
     getLikesBySlug(visibleSlugs),
   ]);
   const featuredAuthorName = featured
-    ? getDisplayAuthorName(featured.slug.current)
+    ? getDisplayAuthorName(featured.slug.current, featured.author?.name)
     : null;
   const featuredPrimaryCategory = featured?.categories?.[0];
   const homeJsonLd = {
@@ -475,7 +475,10 @@ export default async function Home() {
       {/* NEWS GRID */}
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
         {latest.map((post) => {
-          const displayAuthorName = getDisplayAuthorName(post.slug.current);
+          const displayAuthorName = getDisplayAuthorName(
+            post.slug.current,
+            post.author?.name,
+          );
 
           return (
             <article key={post._id} className="border-b newspaper-border pb-10">

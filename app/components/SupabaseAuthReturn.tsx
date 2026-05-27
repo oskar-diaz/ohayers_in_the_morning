@@ -2,12 +2,11 @@
 
 import { useEffect } from "react";
 
+import { SUPABASE_RETURN_TO_KEY } from "@/lib/auth-redirect";
 import { supabase } from "@/lib/supabase";
 
-const RETURN_TO_KEY = "supabase-return-to";
-
 function consumeReturnTo() {
-  const target = window.localStorage.getItem(RETURN_TO_KEY);
+  const target = window.localStorage.getItem(SUPABASE_RETURN_TO_KEY);
 
   if (!target) {
     return null;
@@ -18,19 +17,19 @@ function consumeReturnTo() {
     const targetUrl = new URL(target, window.location.origin);
 
     if (targetUrl.origin !== currentUrl.origin) {
-      window.localStorage.removeItem(RETURN_TO_KEY);
+      window.localStorage.removeItem(SUPABASE_RETURN_TO_KEY);
       return null;
     }
 
     if (targetUrl.href === currentUrl.href) {
-      window.localStorage.removeItem(RETURN_TO_KEY);
+      window.localStorage.removeItem(SUPABASE_RETURN_TO_KEY);
       return null;
     }
 
-    window.localStorage.removeItem(RETURN_TO_KEY);
+    window.localStorage.removeItem(SUPABASE_RETURN_TO_KEY);
     return targetUrl.href;
   } catch {
-    window.localStorage.removeItem(RETURN_TO_KEY);
+    window.localStorage.removeItem(SUPABASE_RETURN_TO_KEY);
     return null;
   }
 }

@@ -63,7 +63,9 @@ export async function GET() {
         ${imageUrl ? `<p><img src="${imageUrl}" alt="${escapeXml(post.title)}" /></p>` : ""}
         ${post.excerpt ? `<p>${escapeXml(post.excerpt)}</p>` : ""}
       `.trim();
-      const author = `<author>${escapeXml(getDisplayAuthorName(post.slug.current))}</author>`;
+      const author = `<author>${escapeXml(
+        getDisplayAuthorName(post.slug.current, post.author?.name),
+      )}</author>`;
       const mediaContent = imageUrl
         ? `<media:content url="${escapeXml(imageUrl)}" medium="image" />`
         : "";

@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 
 import { ADMIN_EMAILS, normalizeEmail } from "@/lib/admin";
+import { getCurrentAuthUrl, rememberAuthReturnTo } from "@/lib/auth-redirect";
 import { supabase } from "@/lib/supabase";
 
 const EDIT_WINDOW_IN_MS = 15 * 60 * 1000;
@@ -224,14 +225,12 @@ export default function Comments({ slug }: { slug: string }) {
   }, []);
 
   async function login() {
-    window.localStorage.setItem("supabase-return-to", window.location.href);
-
-    const redirectUrl = new URL("/", window.location.origin).toString();
+    rememberAuthReturnTo();
 
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: redirectUrl,
+        redirectTo: getCurrentAuthUrl(),
       },
     });
   }

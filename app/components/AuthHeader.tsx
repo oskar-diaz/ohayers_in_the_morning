@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 
@@ -27,6 +29,7 @@ function getInitial(name: string) {
 }
 
 export default function AuthHeader() {
+  const pathname = usePathname();
   const [session, setSession] = useState<Session | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
@@ -80,11 +83,12 @@ export default function AuthHeader() {
 
   const name = getUserName(user);
   const avatarUrl = getAvatarUrl(user);
+  const isForumPath = pathname === "/forum" || pathname.startsWith("/forum/");
 
   return (
     <header
       aria-label="Sesion"
-      className="fixed left-2 right-2 top-2 z-[80] flex h-10 max-w-[360px] items-center justify-between gap-2 rounded-full border border-black/10 bg-[#fffdf8]/95 px-2 shadow-[0_10px_28px_rgba(17,17,17,0.14)] backdrop-blur sm:left-4 sm:right-auto sm:w-[min(360px,calc(100vw-2rem))]"
+      className="fixed left-2 right-2 top-2 z-[80] flex h-10 max-w-[420px] items-center justify-between gap-2 rounded-full border border-black/10 bg-[#fffdf8]/95 px-2 shadow-[0_10px_28px_rgba(17,17,17,0.14)] backdrop-blur sm:left-4 sm:right-auto sm:w-[min(420px,calc(100vw-2rem))]"
     >
       <div className="flex min-w-0 items-center gap-2">
         {avatarUrl ? (
@@ -105,14 +109,25 @@ export default function AuthHeader() {
         </span>
       </div>
 
-      <button
-        type="button"
-        onClick={handleSignOut}
-        disabled={isSigningOut}
-        className="shrink-0 rounded-full border border-[#111111] bg-[#111111] px-2.5 py-1.5 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-[#fffdf8] transition hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:opacity-55"
-      >
-        {isSigningOut ? "..." : "Salir"}
-      </button>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {isForumPath && (
+          <Link
+            href="/forum/profile"
+            className="rounded-full border border-[#d6d1c8] bg-[#fffdf8] px-2.5 py-1.5 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-[#111111] transition hover:bg-white"
+          >
+            Perfil
+          </Link>
+        )}
+
+        <button
+          type="button"
+          onClick={handleSignOut}
+          disabled={isSigningOut}
+          className="rounded-full border border-[#111111] bg-[#111111] px-2.5 py-1.5 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-[#fffdf8] transition hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:opacity-55"
+        >
+          {isSigningOut ? "..." : "Salir"}
+        </button>
+      </div>
     </header>
   );
 }

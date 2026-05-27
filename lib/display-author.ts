@@ -5,6 +5,14 @@ const DISPLAY_AUTHOR_NAMES = [
   "Maria Hanamasa",
 ] as const;
 
+function normalizeAuthorName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
 function hashSeed(seed: string) {
   let hash = 0;
 
@@ -15,7 +23,13 @@ function hashSeed(seed: string) {
   return hash;
 }
 
-export function getDisplayAuthorName(seed: string) {
+export function getDisplayAuthorName(seed: string, authorName?: string | null) {
+  const safeAuthorName = authorName?.trim();
+
+  if (safeAuthorName && normalizeAuthorName(safeAuthorName) !== "oskar diaz") {
+    return safeAuthorName;
+  }
+
   const safeSeed = seed.trim();
 
   if (!safeSeed) {

@@ -55,6 +55,9 @@ type CategoryPost = {
     current?: string;
   };
   categories?: PostCategory[];
+  author?: {
+    name?: string;
+  };
 };
 
 const getCategory = cache(async (slug: string) => {
@@ -88,6 +91,9 @@ const getCategoryPosts = cache(async (slug: string) => {
       categories[]->{
         title,
         slug
+      },
+      author->{
+        name
       }
     }
   `,
@@ -391,7 +397,10 @@ export default async function CategoryPage({
       <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
         {validPosts.map((post) => {
           const postSlug = post.slug.current;
-          const displayAuthorName = getDisplayAuthorName(postSlug);
+          const displayAuthorName = getDisplayAuthorName(
+            postSlug,
+            post.author?.name,
+          );
 
           return (
             <article key={post._id} className="border-b newspaper-border pb-10">
