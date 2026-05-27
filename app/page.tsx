@@ -27,7 +27,7 @@ import {
 } from "@/lib/site";
 import { supabase } from "@/lib/supabase";
 import { getViewsBySlug } from "@/lib/views";
-import { blogCategory } from "@/lib/wordpress";
+import { blogCategory, getWordpressPosts } from "@/lib/wordpress";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
@@ -386,14 +386,16 @@ function StoryMeta({
 
 
 export default async function Home() {
-  const [posts, categories, latestForumPosts] = await Promise.all([
+  const [posts, categories, latestForumPosts, blogPosts] = await Promise.all([
     getPosts(),
     getCategories(),
     getLatestForumPosts(),
+    getWordpressPosts(),
   ]);
   const postsWithSlug = getPostsWithSlug(posts);
   const featured = postsWithSlug[0];
   const latest = featured ? postsWithSlug.slice(1) : postsWithSlug;
+  const latestBlogPosts = blogPosts.slice(0, 4);
   const visiblePosts = featured ? [featured, ...latest] : postsWithSlug;
   const visibleSlugs = visiblePosts.map((post) => post.slug.current);
   const categoryLinks = categories.filter(
@@ -807,9 +809,77 @@ export default async function Home() {
         })}
       </section>
 
+      {latestBlogPosts.length > 0 && (
+        <section className="max-w-7xl mx-auto px-6 py-14 border-t newspaper-border">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
+                Blog
+              </p>
+              <h2 className="mt-3 newspaper-title text-[clamp(2.4rem,5vw,4.6rem)] font-black leading-[0.92] tracking-[-0.045em]">
+                Lo último del blog
+              </h2>
+            </div>
+
+            <Link
+              href="/category/blog"
+              className="text-xs font-black uppercase tracking-[0.18em] text-[#111111] transition hover:text-red-700"
+            >
+              Ver blog
+            </Link>
+          </div>
+
+          <div className="mt-8 grid gap-7 md:grid-cols-2 xl:grid-cols-4">
+            {latestBlogPosts.map((post) => (
+              <article key={post.id} className="border-b newspaper-border pb-7">
+                <a href={post.url} target="_blank" rel="noopener noreferrer">
+                  <div className="relative aspect-[4/3] overflow-hidden bg-[#ece8df]">
+                    {post.imageUrl ? (
+                      <Image
+                        src={post.imageUrl}
+                        alt=""
+                        fill
+                        sizes="(min-width: 1280px) 25vw, (min-width: 768px) 50vw, 100vw"
+                        className="object-cover transition duration-500 hover:scale-[1.03]"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-sm font-black uppercase tracking-[0.18em] text-[#7a746b]">
+                        Ikublog
+                      </div>
+                    )}
+                  </div>
+                </a>
+
+                <p className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-red-700">
+                  {blogCategory.title}
+                </p>
+
+                <a href={post.url} target="_blank" rel="noopener noreferrer">
+                  <h3
+                    className="mt-3 newspaper-title text-[clamp(1.75rem,2.5vw,2.4rem)] font-black leading-[0.95] transition hover:text-red-700"
+                    dangerouslySetInnerHTML={{ __html: post.titleHtml }}
+                  />
+                </a>
+
+                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-[#7a746b]">
+                  {formatPublicationDateTime(post.publishedAt)}
+                </p>
+
+                {post.excerptHtml && (
+                  <div
+                    className="mt-3 line-clamp-3 text-sm leading-6 text-[#5f5952] [&_a]:hidden"
+                    dangerouslySetInnerHTML={{ __html: post.excerptHtml }}
+                  />
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="max-w-7xl mx-auto px-6 py-14 border-t newspaper-border">
         <p className="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
-          Destacado
+          Las chorradas de twitter
         </p>
 
         <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3 xl:items-start">
