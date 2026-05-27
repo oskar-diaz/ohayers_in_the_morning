@@ -11,6 +11,8 @@ import XEmbed from "@/app/components/XEmbed";
 import { getCommentCountsBySlug } from "@/lib/comments";
 import { getDisplayAuthor } from "@/lib/display-author";
 import { formatPublicationDateTime } from "@/lib/format-date";
+import { formatForumDate } from "@/lib/forum";
+import { getForumPostShareImageUrl } from "@/lib/forum-seo";
 import { getLikesBySlug } from "@/lib/likes";
 import {
   absoluteUrl,
@@ -23,6 +25,7 @@ import {
   siteLocale,
   siteName,
 } from "@/lib/site";
+import { supabase } from "@/lib/supabase";
 import { getViewsBySlug } from "@/lib/views";
 import { blogCategory } from "@/lib/wordpress";
 import { client } from "@/sanity/lib/client";
@@ -93,6 +96,39 @@ type HomePost = {
   };
 };
 
+type HomeForumCategory = {
+  color: string;
+  slug: string;
+  title: string;
+};
+
+type HomeForumTopicRow = {
+  id: number;
+  slug: string;
+  title: string;
+  author_name: string;
+  reply_count: number;
+  last_post_at: string;
+  forum_categories?: HomeForumCategory | HomeForumCategory[] | null;
+};
+
+type HomeForumPostContentRow = {
+  content: string;
+  topic_id: number;
+};
+
+type HomeForumPostPreview = {
+  authorName: string;
+  category: HomeForumCategory;
+  likes: number;
+  replyCount: number;
+  thumbnailUrl: string | null;
+  title: string;
+  updatedAt: string;
+  url: string;
+  views: number;
+};
+
 const getPosts = cache(async () => {
   return client.fetch<HomePost[]>(`
     *[_type == "post"] | order(publishedAt desc) {
@@ -124,11 +160,115 @@ const getCategories = cache(async () => {
   `);
 });
 
+function getHomeForumCategory(
+  topic: HomeForumTopicRow,
+): HomeForumCategory | null {
+  const category = Array.isArray(topic.forum_categories)
+    ? topic.forum_categories[0]
+    : topic.forum_categories;
+
+  return category?.slug && category.title ? category : null;
+}
+
+const getLatestForumPosts = cache(async (): Promise<HomeForumPostPreview[]> => {
+  try {
+    const { data: topicRows, error: topicsError } = await supabase
+      .from("forum_topics")
+      .select(
+        "id, slug, title, author_name, reply_count, last_post_at, forum_categories(slug, title, color)",
+      )
+      .is("hidden_at", null)
+      .order("last_post_at", {
+        ascending: false,
+      })
+      .limit(7);
+
+    if (topicsError) {
+      throw topicsError;
+    }
+
+    const topics = ((topicRows ?? []) as HomeForumTopicRow[]).filter((topic) =>
+      Boolean(getHomeForumCategory(topic)),
+    );
+
+    if (topics.length === 0) {
+      return [];
+    }
+
+    const topicIds = topics.map((topic) => topic.id);
+    const { data: postRows, error: postsError } = await supabase
+      .from("forum_posts")
+      .select("topic_id, content")
+      .in("topic_id", topicIds)
+      .is("hidden_at", null)
+      .order("created_at", {
+        ascending: true,
+      })
+      .limit(120);
+
+    if (postsError) {
+      throw postsError;
+    }
+
+    const thumbnailsByTopic = new Map<number, string>();
+
+    for (const post of (postRows ?? []) as HomeForumPostContentRow[]) {
+      if (thumbnailsByTopic.has(post.topic_id)) {
+        continue;
+      }
+
+      const thumbnailUrl = getForumPostShareImageUrl(post.content);
+
+      if (thumbnailUrl) {
+        thumbnailsByTopic.set(post.topic_id, thumbnailUrl);
+      }
+    }
+
+    const metricKeys = topics.map((topic) => `forum-topic-${topic.id}`);
+    const [views, likes] = await Promise.all([
+      getViewsBySlug(metricKeys),
+      getLikesBySlug(metricKeys),
+    ]);
+
+    return topics.flatMap((topic) => {
+      const category = getHomeForumCategory(topic);
+
+      if (!category) {
+        return [];
+      }
+
+      const metricKey = `forum-topic-${topic.id}`;
+
+      return [
+        {
+          authorName: topic.author_name,
+          category,
+          likes: likes[metricKey] ?? 0,
+          replyCount: topic.reply_count,
+          thumbnailUrl: thumbnailsByTopic.get(topic.id) ?? null,
+          title: topic.title,
+          updatedAt: topic.last_post_at,
+          url: `/forum/${category.slug}/${topic.slug}`,
+          views: views[metricKey] ?? 0,
+        },
+      ];
+    });
+  } catch (error) {
+    console.error("Failed to load latest forum posts", error);
+
+    return [];
+  }
+});
+
 function getPostsWithSlug(posts: HomePost[]) {
   return posts.filter(
     (post): post is HomePost & { slug: { current: string } } =>
       Boolean(post.slug?.current),
   );
+}
+
+function getCssImageUrl(value: string) {
+  return `url("${value.replace(/["\\]/g, "\\$&")}")`;
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -246,7 +386,11 @@ function StoryMeta({
 
 
 export default async function Home() {
-  const [posts, categories] = await Promise.all([getPosts(), getCategories()]);
+  const [posts, categories, latestForumPosts] = await Promise.all([
+    getPosts(),
+    getCategories(),
+    getLatestForumPosts(),
+  ]);
   const postsWithSlug = getPostsWithSlug(posts);
   const featured = postsWithSlug[0];
   const latest = featured ? postsWithSlug.slice(1) : postsWithSlug;
@@ -472,19 +616,110 @@ export default async function Home() {
       )}
 
       <section className="max-w-7xl mx-auto px-6 py-12 border-b newspaper-border">
-        <div className="mx-auto max-w-[620px]">
-          <p className="text-center text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
-            Instagram
-          </p>
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,620px)_minmax(340px,1fr)] lg:items-start">
+          <div className="mx-auto w-full max-w-[620px] lg:mx-0">
+            <p className="text-center text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
+              Instagram
+            </p>
 
-          <h2 className="mt-4 text-center newspaper-title text-[clamp(2.6rem,5vw,4.8rem)] font-black leading-[0.92] tracking-[-0.045em]">
-            Video destacado
-          </h2>
+            <h2 className="mt-4 text-center newspaper-title text-[clamp(2.6rem,5vw,4.8rem)] font-black leading-[0.92] tracking-[-0.045em]">
+              Video destacado
+            </h2>
 
-          <InstagramEmbed
-            url={FEATURED_INSTAGRAM_VIDEO_URL}
-            className="mx-auto mt-8 w-full max-w-[560px]"
-          />
+            <InstagramEmbed
+              url={FEATURED_INSTAGRAM_VIDEO_URL}
+              className="mx-auto mt-8 w-full max-w-[560px]"
+            />
+          </div>
+
+          <aside className="lg:border-l lg:border-[#d6d1c8] lg:pl-8">
+            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#d6d1c8] pb-4">
+              <div>
+                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
+                  Comunidad
+                </p>
+                <h2 className="mt-3 newspaper-title text-[clamp(2rem,3.6vw,3.2rem)] font-black leading-[0.94] tracking-[-0.035em]">
+                  Últimos mensajes en el foro
+                </h2>
+              </div>
+
+              <Link
+                href="/forum"
+                className="text-xs font-black uppercase tracking-[0.18em] text-[#111111] transition hover:text-red-700"
+              >
+                Ver foro
+              </Link>
+            </div>
+
+            {latestForumPosts.length > 0 ? (
+              <div className="mt-5 space-y-4">
+                {latestForumPosts.map((post) => (
+                  <Link
+                    key={post.url}
+                    href={post.url}
+                    className="group grid grid-cols-[92px_1fr] gap-4 border-b border-[#d6d1c8] pb-4 transition last:border-b-0 last:pb-0"
+                  >
+                    <div className="relative h-[74px] overflow-hidden bg-[#ece8df]">
+                      {post.thumbnailUrl ? (
+                        <div
+                          className="absolute inset-0 bg-cover bg-center transition duration-500 group-hover:scale-[1.04]"
+                          style={{
+                            backgroundImage: getCssImageUrl(post.thumbnailUrl),
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="relative flex h-full items-center justify-center"
+                          style={{ backgroundColor: post.category.color }}
+                        >
+                          <Image
+                            src="/daruma-foros.png"
+                            alt=""
+                            fill
+                            sizes="92px"
+                            className="object-contain p-2"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-red-700">
+                        {post.category.title}
+                      </p>
+                      <h3 className="mt-1 line-clamp-2 text-base font-black leading-tight text-[#111111] transition group-hover:text-red-700">
+                        {post.title}
+                      </h3>
+                      <p className="mt-2 truncate text-xs font-semibold text-[#7a746b]">
+                        {post.authorName} · {formatForumDate(post.updatedAt)}
+                      </p>
+                      <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c]">
+                        <span>
+                          {post.replyCount === 1
+                            ? "1 respuesta"
+                            : `${post.replyCount.toLocaleString()} respuestas`}
+                        </span>
+                        <span>{post.views.toLocaleString()} vistas</span>
+                        <span>{post.likes.toLocaleString()} likes</span>
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-6 border border-[#d6d1c8] bg-[#fffdf8] p-5">
+                <p className="text-sm leading-6 text-[#5f5952]">
+                  Todavía no hay mensajes recientes en el foro.
+                </p>
+                <Link
+                  href="/forum"
+                  className="mt-4 inline-flex text-xs font-black uppercase tracking-[0.18em] text-red-700 transition hover:text-[#111111]"
+                >
+                  Abrir foro
+                </Link>
+              </div>
+            )}
+          </aside>
         </div>
       </section>
 
