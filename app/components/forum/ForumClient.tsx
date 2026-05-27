@@ -74,6 +74,7 @@ type ForumClientProps = {
 
 type ForumCategorySummary = ForumCategory & {
   latestTopic: ForumTopic | null;
+  latestTopics: ForumTopic[];
   postCount: number;
   threadCount: number;
   topicCount: number;
@@ -1284,6 +1285,7 @@ export default function ForumClient({
   const currentCategorySummary = currentCategory
     ? categories.find((category) => category.id === currentCategory.id) ?? null
     : null;
+  const shouldShowCategorySidebar = isCategoryView || isTopicView;
 
   function canManageCategory(category: ForumCategory | null | undefined) {
     return Boolean(
@@ -1581,13 +1583,22 @@ export default function ForumClient({
 
       const allTopics = (topicRows ?? []) as ForumTopic[];
       const summaries = nextCategories.map((category) => {
-        const categoryTopics = allTopics.filter(
-          (topic) => topic.category_id === category.id,
-        );
+        const categoryTopics = allTopics
+          .filter((topic) => topic.category_id === category.id)
+          .sort((firstTopic, secondTopic) => {
+            const firstTime = Date.parse(firstTopic.last_post_at);
+            const secondTime = Date.parse(secondTopic.last_post_at);
+
+            return (
+              (Number.isNaN(secondTime) ? 0 : secondTime) -
+              (Number.isNaN(firstTime) ? 0 : firstTime)
+            );
+          });
 
         return {
           ...category,
           latestTopic: categoryTopics[0] ?? null,
+          latestTopics: categoryTopics.slice(0, 5),
           postCount: categoryTopics.reduce(
             (total, topic) => total + Number(topic.post_count ?? 0),
             0,
@@ -2761,6 +2772,9 @@ export default function ForumClient({
 
   function renderCategoryListItem(category: ForumCategorySummary) {
     const topicLabel = formatForumCount(category.topicCount, "post", "posts");
+    const canManageCurrentCategory = canManageCategory(category);
+    const isCategoryReordering = activeAction.startsWith("category-order-");
+    const isDeletingCategory = activeAction === `category-delete-${category.id}`;
     const metrics = getCategoryOwnMetrics(category.id);
     const metricKey = getForumCategoryMetricKey(category.id);
 
@@ -2769,8 +2783,8 @@ export default function ForumClient({
         key={category.id}
         className="editorial-card rounded-[1.6rem] px-5 py-5 transition hover:shadow-[0_16px_34px_rgba(17,17,17,0.08)] sm:px-6"
       >
-        <Link href={`/forum/${category.slug}`} className="block">
-          <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <Link href={`/forum/${category.slug}`} className="min-w-0 flex-1">
             <div className="min-w-0">
               <div className="flex items-center gap-3">
                 <span
@@ -2787,7 +2801,9 @@ export default function ForumClient({
                 </p>
               )}
             </div>
+          </Link>
 
+          <div className="flex shrink-0 items-start gap-2">
             <div className="shrink-0 rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-center">
               <p className="text-lg font-black leading-none text-[#111111]">
                 {category.topicCount}
@@ -2796,8 +2812,29 @@ export default function ForumClient({
                 {category.topicCount === 1 ? "post" : "posts"}
               </p>
             </div>
+
+            {canManageCurrentCategory && (
+              <div className="flex flex-col gap-1 sm:flex-row">
+                <button
+                  type="button"
+                  disabled={isCategoryReordering || isDeletingCategory}
+                  onClick={() => openCategoryEdit(category)}
+                  className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Editar
+                </button>
+                <button
+                  type="button"
+                  disabled={isCategoryReordering || isDeletingCategory}
+                  onClick={() => void deleteCategory(category)}
+                  className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Borrar
+                </button>
+              </div>
+            )}
           </div>
-        </Link>
+        </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#6a645c]">
           <span>{topicLabel}</span>
@@ -2817,6 +2854,48 @@ export default function ForumClient({
             }
           />
         </div>
+        {category.latestTopics.length > 0 && (
+          <div className="mt-5 border-t border-[#d6d1c8] pt-4">
+            <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-[#7a746b]">
+              Últimos posts
+            </p>
+            <div className="mt-3 space-y-2">
+              {category.latestTopics.map((topic) => {
+                const topicMetrics = getTopicMetrics(topic.id);
+
+                return (
+                  <Link
+                    key={topic.id}
+                    href={getTopicUrl(topic, categories)}
+                    className="block rounded-xl px-2 py-1.5 transition hover:bg-[#f5efe4]"
+                  >
+                    <span className="block text-sm font-bold leading-5 text-[#111111] transition hover:text-red-700">
+                      {topic.title}
+                    </span>
+                    <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c]">
+                      <span>
+                        {formatForumCount(
+                          topic.reply_count,
+                          "respuesta",
+                          "respuestas",
+                        )}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Eye size={13} strokeWidth={2.2} />
+                        {topicMetrics.views.toLocaleString()} vistas
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Heart size={13} strokeWidth={2.2} />
+                        {topicMetrics.likes.toLocaleString()} likes
+                      </span>
+                      <span>actualizado {formatForumDate(topic.last_post_at)}</span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <PostShareButtons
           title={`Foro: ${category.title}`}
           url={getForumShareUrl(`/forum/${category.slug}`)}
@@ -3379,7 +3458,11 @@ export default function ForumClient({
       {renderForumHeader()}
       {renderStatusMessages()}
 
-      <main className="mx-auto grid min-h-[70vh] max-w-7xl gap-10 px-6 py-12 lg:grid-cols-[1fr_360px]">
+      <main
+        className={`mx-auto grid min-h-[70vh] max-w-7xl gap-10 px-6 py-12 ${
+          shouldShowCategorySidebar ? "lg:grid-cols-[1fr_360px]" : "lg:grid-cols-1"
+        }`}
+      >
         <section className="min-w-0">
           {user && isCategoryComposerOpen && (
             <div className="mb-8">{renderCategoryComposer()}</div>
@@ -3674,7 +3757,7 @@ export default function ForumClient({
           )}
         </section>
 
-        {!isLoading && (
+        {!isLoading && shouldShowCategorySidebar && (
           <aside className="space-y-6 lg:sticky lg:top-24 lg:self-start">
             <section className="editorial-card rounded-[2rem] px-5 py-6 lg:flex lg:max-h-[calc(100vh-7rem)] lg:flex-col lg:overflow-hidden">
               <div className="flex items-center justify-between gap-3">
