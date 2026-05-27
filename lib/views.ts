@@ -1,11 +1,11 @@
-import { hasRedisEnv, redis } from "./redis";
+import { hasRedisEnv, redis, redisForStaticReads } from "./redis";
 
 function getViewsKey(slug: string) {
   return `views:${slug}`;
 }
 
 export async function getViews(slug: string) {
-  if (!redis) {
+  if (!redisForStaticReads) {
     if (!hasRedisEnv) {
       console.error("Upstash Redis env vars are missing for getViews()");
     }
@@ -14,7 +14,7 @@ export async function getViews(slug: string) {
   }
 
   try {
-    const views = await redis.get<number>(getViewsKey(slug));
+    const views = await redisForStaticReads.get<number>(getViewsKey(slug));
 
     return Number(views ?? 0);
   } catch (error) {
@@ -26,8 +26,8 @@ export async function getViews(slug: string) {
 export async function getViewsBySlug(slugs: string[]) {
   const uniqueSlugs = [...new Set(slugs)];
 
-  if (!redis || slugs.length === 0) {
-    if (!redis && uniqueSlugs.length > 0 && !hasRedisEnv) {
+  if (!redisForStaticReads || slugs.length === 0) {
+    if (!redisForStaticReads && uniqueSlugs.length > 0 && !hasRedisEnv) {
       console.error("Upstash Redis env vars are missing for getViewsBySlug()");
     }
 
@@ -37,7 +37,7 @@ export async function getViewsBySlug(slugs: string[]) {
   }
 
   try {
-    const pipeline = redis.pipeline();
+    const pipeline = redisForStaticReads.pipeline();
 
     for (const slug of uniqueSlugs) {
       pipeline.get<number>(getViewsKey(slug));

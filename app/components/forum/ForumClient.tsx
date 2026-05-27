@@ -7,6 +7,8 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
+  Eye,
+  Heart,
   Image as ImageIcon,
   Italic,
   Link as LinkIcon,
@@ -28,6 +30,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import {
   ChangeEvent,
   FormEvent,
+  startTransition,
   useEffect,
   useMemo,
   useRef,
@@ -35,6 +38,12 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 
+import {
+  getLikedPosts,
+  useLikedPost,
+  writeLikedPosts,
+} from "@/app/components/likedPostsStore";
+import PostShareButtons from "@/app/components/PostShareButtons";
 import { ADMIN_EMAILS, normalizeEmail } from "@/lib/admin";
 import { getCurrentAuthUrl, rememberAuthReturnTo } from "@/lib/auth-redirect";
 import {
@@ -54,6 +63,7 @@ import {
   getForumUserName,
   slugifyForumValue,
 } from "@/lib/forum";
+import { siteUrl } from "@/lib/site";
 import { supabase } from "@/lib/supabase";
 
 type ForumClientProps = {
@@ -72,6 +82,11 @@ type ForumCategorySummary = ForumCategory & {
 type ForumTopicPreview = {
   content: string;
   thumbnailUrl: string | null;
+};
+
+type ForumTopicMetrics = {
+  likes: number;
+  views: number;
 };
 
 type ForumTextAlign = "left" | "center" | "right";
@@ -120,12 +135,41 @@ const FORUM_TEXT_ALIGNMENTS = new Set<ForumTextAlign>([
 ]);
 const FORUM_TEXT_ALIGN_TAGS = new Set(["blockquote", "div", "li", "p"]);
 const FORUM_URL_PATTERN = /https?:\/\/[^\s<]+/g;
+const EMPTY_FORUM_TOPIC_METRICS: ForumTopicMetrics = {
+  likes: 0,
+  views: 0,
+};
 
 function isForumTextAlign(value: unknown): value is ForumTextAlign {
   return (
     typeof value === "string" &&
     FORUM_TEXT_ALIGNMENTS.has(value as ForumTextAlign)
   );
+}
+
+function getForumCategoryMetricKey(categoryId: number) {
+  return `forum-category-${categoryId}`;
+}
+
+function getForumPostMetricKey(postId: number) {
+  return `forum-post-${postId}`;
+}
+
+function getForumTopicMetricKey(topicId: number) {
+  return `forum-topic-${topicId}`;
+}
+
+function getForumShareUrl(path: string) {
+  return new URL(path, siteUrl).toString();
+}
+
+function getForumMetricCount(
+  metrics: Record<string, number> | undefined,
+  key: string,
+) {
+  const value = metrics?.[key];
+
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function isGoogleUser(user: User | null) {
@@ -698,6 +742,81 @@ function SmilieBar({ onPick }: { onPick: (value: string) => void }) {
   );
 }
 
+function ForumMetricLikeButton({
+  compact = false,
+  likes,
+  metricKey,
+  onLiked,
+  targetLabel = "este post",
+}: {
+  compact?: boolean;
+  likes: number;
+  metricKey: string;
+  onLiked: (likes: number) => void;
+  targetLabel?: string;
+}) {
+  const [isSubmittingLike, setIsSubmittingLike] = useState(false);
+  const liked = useLikedPost(metricKey);
+
+  async function likeMetric() {
+    if (liked || isSubmittingLike) {
+      return;
+    }
+
+    setIsSubmittingLike(true);
+
+    try {
+      const response = await fetch(`/api/likes/${encodeURIComponent(metricKey)}`, {
+        method: "POST",
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Forum metric like request failed");
+      }
+
+      const data = (await response.json()) as { likes?: number };
+      const nextLikes = data.likes ?? likes + 1;
+      const likedPosts = getLikedPosts();
+      const nextLikedPosts = likedPosts.includes(metricKey)
+        ? likedPosts
+        : [...likedPosts, metricKey];
+
+      writeLikedPosts(nextLikedPosts);
+
+      startTransition(() => {
+        onLiked(nextLikes);
+      });
+    } catch {
+      // Ignore transient failures and keep the current UI state.
+    } finally {
+      setIsSubmittingLike(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={likeMetric}
+      disabled={liked || isSubmittingLike}
+      className={`inline-flex items-center gap-1.5 rounded-full border border-[#d6d1c8] bg-[#fffdf8] font-bold uppercase leading-none text-[#b93c3c] transition hover:border-[#b93c3c] hover:bg-white disabled:cursor-not-allowed disabled:opacity-100 ${
+        compact
+          ? "px-2.5 py-1.5 text-[0.68rem] tracking-[0.08em]"
+          : "px-3 py-2 text-[0.74rem] tracking-[0.1em]"
+      }`}
+      aria-pressed={liked}
+      aria-label={liked ? `Ya te gusta ${targetLabel}` : `Dar me gusta a ${targetLabel}`}
+    >
+      <Heart
+        size={compact ? 14 : 15}
+        strokeWidth={2.4}
+        fill={liked ? "currentColor" : "none"}
+      />
+      <span>{likes.toLocaleString()}</span>
+    </button>
+  );
+}
+
 function RichTextEditor({
   onChange,
   placeholder,
@@ -1106,6 +1225,9 @@ export default function ForumClient({
   topicSlug,
 }: ForumClientProps) {
   const router = useRouter();
+  const lastTrackedCategoryViewRef = useRef<string | null>(null);
+  const lastTrackedPostViewsRef = useRef<Set<string>>(new Set());
+  const lastTrackedTopicViewRef = useRef<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<ForumProfile | null>(null);
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
@@ -1115,6 +1237,7 @@ export default function ForumClient({
   const [categories, setCategories] = useState<ForumCategorySummary[]>([]);
   const [currentCategory, setCurrentCategory] = useState<ForumCategory | null>(null);
   const [topics, setTopics] = useState<ForumTopic[]>([]);
+  const [forumMetrics, setForumMetrics] = useState<Record<string, ForumTopicMetrics>>({});
   const [topicPreviews, setTopicPreviews] = useState<Record<number, ForumTopicPreview>>({});
   const [currentTopic, setCurrentTopic] = useState<ForumTopic | null>(null);
   const [posts, setPosts] = useState<ForumPost[]>([]);
@@ -1146,6 +1269,9 @@ export default function ForumClient({
   const isTopicView = Boolean(categorySlug && topicSlug);
   const isCategoryView = Boolean(categorySlug && !topicSlug);
   const googleAvatarUrl = user ? getForumUserAvatarUrl(user) : null;
+  const currentCategorySummary = currentCategory
+    ? categories.find((category) => category.id === currentCategory.id) ?? null
+    : null;
 
   function canManageCategory(category: ForumCategory | null | undefined) {
     return Boolean(
@@ -1173,6 +1299,60 @@ export default function ForumClient({
       post.author_id === user.id ||
       (isTopicOpeningPost(post, depth) && currentTopic?.author_id === user.id)
     );
+  }
+
+  function getForumMetrics(metricKey: string) {
+    return forumMetrics[metricKey] ?? EMPTY_FORUM_TOPIC_METRICS;
+  }
+
+  function getCategoryOwnMetrics(categoryId: number) {
+    return getForumMetrics(getForumCategoryMetricKey(categoryId));
+  }
+
+  function getPostMetrics(postId: number) {
+    return getForumMetrics(getForumPostMetricKey(postId));
+  }
+
+  function getTopicMetrics(topicId: number) {
+    return getForumMetrics(getForumTopicMetricKey(topicId));
+  }
+
+  function getCurrentTopicSharePath() {
+    if (!currentTopic) {
+      return "/forum";
+    }
+
+    const category = currentCategory ?? getForumCategoryFromTopic(currentTopic);
+
+    return category
+      ? `/forum/${category.slug}/${currentTopic.slug}`
+      : "/forum";
+  }
+
+  function updateForumMetrics(metricKey: string, metrics: Partial<ForumTopicMetrics>) {
+    setForumMetrics((currentMetrics) => ({
+      ...currentMetrics,
+      [metricKey]: {
+        ...EMPTY_FORUM_TOPIC_METRICS,
+        ...currentMetrics[metricKey],
+        ...metrics,
+      },
+    }));
+  }
+
+  function updateCategoryMetrics(
+    categoryId: number,
+    metrics: Partial<ForumTopicMetrics>,
+  ) {
+    updateForumMetrics(getForumCategoryMetricKey(categoryId), metrics);
+  }
+
+  function updatePostMetrics(postId: number, metrics: Partial<ForumTopicMetrics>) {
+    updateForumMetrics(getForumPostMetricKey(postId), metrics);
+  }
+
+  function updateTopicMetrics(topicId: number, metrics: Partial<ForumTopicMetrics>) {
+    updateForumMetrics(getForumTopicMetricKey(topicId), metrics);
   }
 
   async function login() {
@@ -1290,6 +1470,68 @@ export default function ForumClient({
     setTopicPreviews(previews);
   }
 
+  async function loadForumMetrics(metricKeys: string[]) {
+    const uniqueMetricKeys = [...new Set(metricKeys)];
+
+    if (uniqueMetricKeys.length === 0) {
+      setForumMetrics({});
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/forum/topic-metrics", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          keys: uniqueMetricKeys,
+        }),
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Forum metrics request failed");
+      }
+
+      const data = (await response.json()) as {
+        likes?: Record<string, number>;
+        views?: Record<string, number>;
+      };
+      const nextMetrics = Object.fromEntries(
+        uniqueMetricKeys.map((metricKey) => {
+          return [
+            metricKey,
+            {
+              likes: getForumMetricCount(data.likes, metricKey),
+              views: getForumMetricCount(data.views, metricKey),
+            },
+          ];
+        }),
+      ) as Record<string, ForumTopicMetrics>;
+
+      setForumMetrics((currentMetrics) => ({
+        ...currentMetrics,
+        ...nextMetrics,
+      }));
+    } catch (error) {
+      console.error("Failed to load forum metrics", error);
+      setForumMetrics((currentMetrics) => ({
+        ...currentMetrics,
+        ...Object.fromEntries(
+          uniqueMetricKeys.map((metricKey) => [
+            metricKey,
+            EMPTY_FORUM_TOPIC_METRICS,
+          ]),
+        ),
+      }));
+    }
+  }
+
+  async function loadTopicMetrics(nextTopics: Pick<ForumTopic, "id">[]) {
+    await loadForumMetrics(nextTopics.map((topic) => getForumTopicMetricKey(topic.id)));
+  }
+
   async function loadForumData() {
     setIsLoading(true);
     setErrorMessage("");
@@ -1347,6 +1589,10 @@ export default function ForumClient({
       });
 
       setCategories(summaries);
+      await loadForumMetrics([
+        ...nextCategories.map((category) => getForumCategoryMetricKey(category.id)),
+        ...allTopics.map((topic) => getForumTopicMetricKey(topic.id)),
+      ]);
 
       const nextCurrentCategory =
         categorySlug
@@ -1358,6 +1604,7 @@ export default function ForumClient({
       if (categorySlug && !nextCurrentCategory) {
         setTopics([]);
         setTopicPreviews({});
+        setForumMetrics({});
         setCurrentTopic(null);
         setPosts([]);
         setErrorMessage("No he encontrado esta categoría del foro.");
@@ -1379,6 +1626,7 @@ export default function ForumClient({
         if (!topicRow) {
           setCurrentTopic(null);
           setPosts([]);
+          setForumMetrics({});
           setErrorMessage("No he encontrado este post del foro.");
           return;
         }
@@ -1387,6 +1635,7 @@ export default function ForumClient({
         setCurrentTopic(nextTopic);
         setTopics([]);
         setTopicPreviews({});
+        await loadTopicMetrics([nextTopic]);
 
         const { data: postRows, error: postsError } = await supabase
           .from("forum_posts")
@@ -1400,7 +1649,10 @@ export default function ForumClient({
           throw postsError;
         }
 
-        setPosts((postRows ?? []) as ForumPost[]);
+        const nextPosts = (postRows ?? []) as ForumPost[];
+
+        setPosts(nextPosts);
+        await loadForumMetrics(nextPosts.map((post) => getForumPostMetricKey(post.id)));
         return;
       }
 
@@ -1459,6 +1711,176 @@ export default function ForumClient({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categorySlug, topicSlug]);
+
+  useEffect(() => {
+    if (!isCategoryView || !currentCategory) {
+      return;
+    }
+
+    const categoryId = currentCategory.id;
+    const metricKey = getForumCategoryMetricKey(categoryId);
+
+    if (lastTrackedCategoryViewRef.current === metricKey) {
+      return;
+    }
+
+    lastTrackedCategoryViewRef.current = metricKey;
+    const controller = new AbortController();
+
+    async function trackCategoryView() {
+      try {
+        const response = await fetch(`/api/views/${encodeURIComponent(metricKey)}`, {
+          method: "POST",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as { views?: number };
+        const views = data.views;
+
+        if (typeof views !== "number" || !Number.isFinite(views)) {
+          return;
+        }
+
+        startTransition(() => {
+          updateCategoryMetrics(categoryId, {
+            views,
+          });
+        });
+      } catch {
+        // Ignore aborted or transient tracking failures and keep the loaded count.
+      }
+    }
+
+    void trackCategoryView();
+
+    return () => {
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentCategory?.id, isCategoryView]);
+
+  useEffect(() => {
+    if (!isTopicView || !currentTopic) {
+      return;
+    }
+
+    const topicId = currentTopic.id;
+    const metricKey = getForumTopicMetricKey(topicId);
+
+    if (lastTrackedTopicViewRef.current === metricKey) {
+      return;
+    }
+
+    lastTrackedTopicViewRef.current = metricKey;
+    const controller = new AbortController();
+
+    async function trackTopicView() {
+      try {
+        const response = await fetch(`/api/views/${encodeURIComponent(metricKey)}`, {
+          method: "POST",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as { views?: number };
+        const views = data.views;
+
+        if (typeof views !== "number" || !Number.isFinite(views)) {
+          return;
+        }
+
+        startTransition(() => {
+          updateTopicMetrics(topicId, {
+            views,
+          });
+        });
+      } catch {
+        // Ignore aborted or transient tracking failures and keep the loaded count.
+      }
+    }
+
+    void trackTopicView();
+
+    return () => {
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTopic?.id, isTopicView]);
+
+  useEffect(() => {
+    if (!isTopicView || posts.length === 0) {
+      return;
+    }
+
+    const postsToTrack = posts
+      .map((post) => ({
+        id: post.id,
+        metricKey: getForumPostMetricKey(post.id),
+      }))
+      .filter(({ metricKey }) => !lastTrackedPostViewsRef.current.has(metricKey));
+
+    if (postsToTrack.length === 0) {
+      return;
+    }
+
+    for (const { metricKey } of postsToTrack) {
+      lastTrackedPostViewsRef.current.add(metricKey);
+    }
+
+    const controller = new AbortController();
+
+    async function trackPostViews() {
+      await Promise.all(
+        postsToTrack.map(async ({ id, metricKey }) => {
+          try {
+            const response = await fetch(
+              `/api/views/${encodeURIComponent(metricKey)}`,
+              {
+                method: "POST",
+                cache: "no-store",
+                signal: controller.signal,
+              },
+            );
+
+            if (!response.ok) {
+              return;
+            }
+
+            const data = (await response.json()) as { views?: number };
+            const views = data.views;
+
+            if (typeof views !== "number" || !Number.isFinite(views)) {
+              return;
+            }
+
+            startTransition(() => {
+              updatePostMetrics(id, {
+                views,
+              });
+            });
+          } catch {
+            // Ignore aborted or transient tracking failures and keep the loaded count.
+          }
+        }),
+      );
+    }
+
+    void trackPostViews();
+
+    return () => {
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTopicView, posts]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -2229,6 +2651,8 @@ export default function ForumClient({
     const previewContent = preview?.content || topic.excerpt || "";
     const previewHtml = previewContent ? renderForumPreviewHtml(previewContent) : "";
     const thumbnailUrl = preview?.thumbnailUrl ?? null;
+    const metrics = getTopicMetrics(topic.id);
+    const metricKey = getForumTopicMetricKey(topic.id);
 
     return (
       <article
@@ -2280,15 +2704,32 @@ export default function ForumClient({
                 />
               )}
 
-              <div className="mt-4 flex items-center gap-3 text-sm text-[#6a645c]">
-                <ForumAvatar
-                  avatarUrl={topic.author_avatar_url}
-                  label={topic.author_name}
-                  size="sm"
-                />
-                <span className="min-w-0 truncate">
-                  {topic.author_name} · {formatForumDate(topic.last_post_at)}
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#6a645c]">
+                <span className="inline-flex min-w-0 items-center gap-3">
+                  <ForumAvatar
+                    avatarUrl={topic.author_avatar_url}
+                    label={topic.author_name}
+                    size="sm"
+                  />
+                  <span className="min-w-0 truncate">
+                    {topic.author_name} · {formatForumDate(topic.last_post_at)}
+                  </span>
                 </span>
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                  <Eye size={15} strokeWidth={2.2} />
+                  {metrics.views.toLocaleString()} vistas
+                </span>
+                <ForumMetricLikeButton
+                  compact
+                  metricKey={metricKey}
+                  likes={metrics.likes}
+                  targetLabel="este post"
+                  onLiked={(likes) =>
+                    updateTopicMetrics(topic.id, {
+                      likes,
+                    })
+                  }
+                />
               </div>
             </div>
           </div>
@@ -2308,45 +2749,68 @@ export default function ForumClient({
 
   function renderCategoryListItem(category: ForumCategorySummary) {
     const topicLabel = formatForumCount(category.topicCount, "post", "posts");
+    const metrics = getCategoryOwnMetrics(category.id);
+    const metricKey = getForumCategoryMetricKey(category.id);
 
     return (
-      <Link
+      <article
         key={category.id}
-        href={`/forum/${category.slug}`}
-        className="editorial-card block rounded-[1.6rem] px-5 py-5 transition hover:shadow-[0_16px_34px_rgba(17,17,17,0.08)] sm:px-6"
+        className="editorial-card rounded-[1.6rem] px-5 py-5 transition hover:shadow-[0_16px_34px_rgba(17,17,17,0.08)] sm:px-6"
       >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <span
-                className="h-3 w-3 shrink-0 rounded-full"
-                style={{ background: category.color }}
-              />
-              <h3 className="text-lg font-black leading-tight text-[#111111]">
-                {category.title}
-              </h3>
+        <Link href={`/forum/${category.slug}`} className="block">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3">
+                <span
+                  className="h-3 w-3 shrink-0 rounded-full"
+                  style={{ background: category.color }}
+                />
+                <h3 className="text-lg font-black leading-tight text-[#111111]">
+                  {category.title}
+                </h3>
+              </div>
+              {category.description && (
+                <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#5f5952]">
+                  {category.description}
+                </p>
+              )}
             </div>
-            {category.description && (
-              <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#5f5952]">
-                {category.description}
+
+            <div className="shrink-0 rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-center">
+              <p className="text-lg font-black leading-none text-[#111111]">
+                {category.topicCount}
               </p>
-            )}
+              <p className="mt-1 text-[0.62rem] uppercase tracking-[0.14em] text-[#7a746b]">
+                {category.topicCount === 1 ? "post" : "posts"}
+              </p>
+            </div>
           </div>
+        </Link>
 
-          <div className="shrink-0 rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-center">
-            <p className="text-lg font-black leading-none text-[#111111]">
-              {category.topicCount}
-            </p>
-            <p className="mt-1 text-[0.62rem] uppercase tracking-[0.14em] text-[#7a746b]">
-              {category.topicCount === 1 ? "post" : "posts"}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 text-sm text-[#6a645c]">
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#6a645c]">
           <span>{topicLabel}</span>
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+            <Eye size={15} strokeWidth={2.2} />
+            {metrics.views.toLocaleString()} vistas
+          </span>
+          <ForumMetricLikeButton
+            compact
+            metricKey={metricKey}
+            likes={metrics.likes}
+            targetLabel={`la categoría ${category.title}`}
+            onLiked={(likes) =>
+              updateCategoryMetrics(category.id, {
+                likes,
+              })
+            }
+          />
         </div>
-      </Link>
+        <PostShareButtons
+          title={`Foro: ${category.title}`}
+          url={getForumShareUrl(`/forum/${category.slug}`)}
+          className="mt-4"
+        />
+      </article>
     );
   }
 
@@ -2509,12 +2973,15 @@ export default function ForumClient({
     const isOwnPost = user?.id === post.author_id;
     const isEditingPost = editingPostId === post.id;
     const canEditPost = canEditForumPost(post, depth);
+    const canShowPostMetrics = !isHidden || isAdmin;
     const canDeletePost = Boolean(
       depth > 0 &&
         user &&
         !isEditingPost &&
         (isOwnPost || isAdmin),
     );
+    const metrics = getPostMetrics(post.id);
+    const metricKey = getForumPostMetricKey(post.id);
 
     return (
       <div
@@ -2522,7 +2989,8 @@ export default function ForumClient({
         className={depth > 0 ? "ml-4 mt-5 border-l border-[#d6d1c8] pl-4 sm:ml-8 sm:pl-6" : ""}
       >
         <article
-          className={`rounded-[1.75rem] border px-5 py-5 shadow-[0_14px_32px_rgba(17,17,17,0.05)] sm:px-7 ${
+          id={`forum-post-${post.id}`}
+          className={`scroll-mt-24 rounded-[1.75rem] border px-5 py-5 shadow-[0_14px_32px_rgba(17,17,17,0.05)] sm:px-7 ${
             isHidden
               ? "border-[#d6d1c8] bg-[#ece8df]/80"
               : "border-[#d6d1c8] bg-[#fffdf8]"
@@ -2600,6 +3068,26 @@ export default function ForumClient({
               )}
             </div>
           </div>
+
+          {canShowPostMetrics && (
+            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#6a645c]">
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                <Eye size={15} strokeWidth={2.2} />
+                {metrics.views.toLocaleString()} vistas
+              </span>
+              <ForumMetricLikeButton
+                compact
+                metricKey={metricKey}
+                likes={metrics.likes}
+                targetLabel={depth === 0 ? "este post" : "esta respuesta"}
+                onLiked={(likes) =>
+                  updatePostMetrics(post.id, {
+                    likes,
+                  })
+                }
+              />
+            </div>
+          )}
 
           {isHidden && !isAdmin ? (
             <p className="mt-5 text-sm italic text-[#6a645c]">
@@ -2902,10 +3390,30 @@ export default function ForumClient({
                     <h2 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">
                       {currentTopic.title}
                     </h2>
-                    <p className="mt-4 text-sm text-[#6a645c]">
-                      {currentTopic.reply_count} respuestas · actualizado{" "}
-                      {formatForumDate(currentTopic.last_post_at)}
-                    </p>
+                    <PostShareButtons
+                      title={currentTopic.title}
+                      url={getForumShareUrl(getCurrentTopicSharePath())}
+                      className="mt-5"
+                    />
+                    <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#6a645c]">
+                      <span>{currentTopic.reply_count} respuestas</span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Eye size={15} strokeWidth={2.2} />
+                        {getTopicMetrics(currentTopic.id).views.toLocaleString()} vistas
+                      </span>
+                      <span>actualizado {formatForumDate(currentTopic.last_post_at)}</span>
+                      <ForumMetricLikeButton
+                        compact
+                        metricKey={getForumTopicMetricKey(currentTopic.id)}
+                        likes={getTopicMetrics(currentTopic.id).likes}
+                        targetLabel="este post"
+                        onLiked={(likes) =>
+                          updateTopicMetrics(currentTopic.id, {
+                            likes,
+                          })
+                        }
+                      />
+                    </div>
                   </div>
 
                   {isAdmin && (
@@ -3022,6 +3530,46 @@ export default function ForumClient({
                         {currentCategory.description}
                       </p>
                     )}
+                    {currentCategorySummary && (
+                      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#6a645c]">
+                        <span>
+                          {formatForumCount(
+                            currentCategorySummary.topicCount,
+                            "post",
+                            "posts",
+                          )}
+                        </span>
+                        <span>
+                          {formatForumCount(
+                            currentCategorySummary.threadCount,
+                            "respuesta",
+                            "respuestas",
+                          )}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Eye size={15} strokeWidth={2.2} />
+                          {getCategoryOwnMetrics(
+                            currentCategory.id,
+                          ).views.toLocaleString()} vistas
+                        </span>
+                        <ForumMetricLikeButton
+                          compact
+                          metricKey={getForumCategoryMetricKey(currentCategory.id)}
+                          likes={getCategoryOwnMetrics(currentCategory.id).likes}
+                          targetLabel={`la categoría ${currentCategory.title}`}
+                          onLiked={(likes) =>
+                            updateCategoryMetrics(currentCategory.id, {
+                              likes,
+                            })
+                          }
+                        />
+                      </div>
+                    )}
+                    <PostShareButtons
+                      title={`Foro: ${currentCategory.title}`}
+                      url={getForumShareUrl(`/forum/${currentCategory.slug}`)}
+                      className="mt-5"
+                    />
                   </div>
 
                   {topics.length > 0 && (
@@ -3041,6 +3589,11 @@ export default function ForumClient({
                   </h2>
 
                   <div className="flex flex-wrap gap-2">
+                    <PostShareButtons
+                      title="Foro Ohayers"
+                      url={getForumShareUrl("/forum")}
+                      className="justify-start sm:justify-end"
+                    />
                     {user && !isCategoryComposerOpen && (
                       <button
                         type="button"
@@ -3136,6 +3689,7 @@ export default function ForumClient({
                   const canManageCurrentCategory = canManageCategory(category);
                   const isDeletingCategory =
                     activeAction === `category-delete-${category.id}`;
+                  const metrics = getCategoryOwnMetrics(category.id);
 
                   return (
                     <div
@@ -3162,6 +3716,16 @@ export default function ForumClient({
                           <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[#7a746b]">
                             {formatForumCount(category.topicCount, "post", "posts")} ·{" "}
                             {formatForumCount(category.threadCount, "respuesta", "respuestas")}
+                          </p>
+                          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#6a645c]">
+                            <span className="inline-flex items-center gap-1">
+                              <Eye size={13} strokeWidth={2.2} />
+                              {metrics.views.toLocaleString()} vistas
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <Heart size={13} strokeWidth={2.2} />
+                              {metrics.likes.toLocaleString()} likes
+                            </span>
                           </p>
                         </Link>
 

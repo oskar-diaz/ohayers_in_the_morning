@@ -1,11 +1,11 @@
-import { hasRedisEnv, redis } from "./redis";
+import { hasRedisEnv, redis, redisForStaticReads } from "./redis";
 
 function getLikesKey(slug: string) {
   return `likes:${slug}`;
 }
 
 export async function getLikes(slug: string) {
-  if (!redis) {
+  if (!redisForStaticReads) {
     if (!hasRedisEnv) {
       console.error("Upstash Redis env vars are missing for getLikes()");
     }
@@ -14,7 +14,7 @@ export async function getLikes(slug: string) {
   }
 
   try {
-    const likes = await redis.get<number>(getLikesKey(slug));
+    const likes = await redisForStaticReads.get<number>(getLikesKey(slug));
 
     return Number(likes ?? 0);
   } catch (error) {
@@ -26,8 +26,8 @@ export async function getLikes(slug: string) {
 export async function getLikesBySlug(slugs: string[]) {
   const uniqueSlugs = [...new Set(slugs)];
 
-  if (!redis || slugs.length === 0) {
-    if (!redis && uniqueSlugs.length > 0 && !hasRedisEnv) {
+  if (!redisForStaticReads || slugs.length === 0) {
+    if (!redisForStaticReads && uniqueSlugs.length > 0 && !hasRedisEnv) {
       console.error("Upstash Redis env vars are missing for getLikesBySlug()");
     }
 
@@ -37,7 +37,7 @@ export async function getLikesBySlug(slugs: string[]) {
   }
 
   try {
-    const pipeline = redis.pipeline();
+    const pipeline = redisForStaticReads.pipeline();
 
     for (const slug of uniqueSlugs) {
       pipeline.get<number>(getLikesKey(slug));

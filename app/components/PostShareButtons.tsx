@@ -14,6 +14,7 @@ import {
 } from "react-share";
 
 type PostShareButtonsProps = {
+  className?: string;
   title: string;
   url: string;
 };
@@ -69,6 +70,7 @@ const shareButtons = [
 ] as const;
 
 export default function PostShareButtons({
+  className = "",
   title,
   url,
 }: PostShareButtonsProps) {
@@ -77,7 +79,7 @@ export default function PostShareButtons({
   )}&title=${encodeURIComponent(title)}`;
 
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className={`flex flex-wrap gap-3 ${className}`}>
       {shareButtons.map(({ Button, Icon, label }) => (
         <Button
           key={label}

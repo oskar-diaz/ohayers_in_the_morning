@@ -1,8 +1,38 @@
 import type { Metadata } from "next";
 
 import ForumClient from "@/app/components/forum/ForumClient";
-import { absoluteUrl } from "@/lib/seo";
-import { siteName } from "@/lib/site";
+import {
+  forumDefaultDescription,
+  getForumShareMetadata,
+} from "@/lib/forum-seo";
+import { resolveSeoDescription } from "@/lib/seo";
+import { supabase } from "@/lib/supabase";
+
+type ForumTopicMetadata = {
+  excerpt: string | null;
+  title: string;
+};
+
+async function getForumTopicMetadata(categorySlug: string, topicSlug: string) {
+  const { data: category } = await supabase
+    .from("forum_categories")
+    .select("id")
+    .eq("slug", categorySlug)
+    .maybeSingle();
+
+  if (!category) {
+    return null;
+  }
+
+  const { data: topic } = await supabase
+    .from("forum_topics")
+    .select("title, excerpt")
+    .eq("category_id", category.id)
+    .eq("slug", topicSlug)
+    .maybeSingle();
+
+  return topic as ForumTopicMetadata | null;
+}
 
 export async function generateMetadata({
   params,
@@ -10,21 +40,21 @@ export async function generateMetadata({
   params: Promise<{ categorySlug: string; topicSlug: string }>;
 }): Promise<Metadata> {
   const { categorySlug, topicSlug } = await params;
-  const title = `Foro: ${topicSlug}`;
+  const topic = await getForumTopicMetadata(categorySlug, topicSlug);
+  const title = topic?.title ? `Foro: ${topic.title}` : "Foro";
+  const description = resolveSeoDescription(
+    topic?.excerpt,
+    forumDefaultDescription,
+  );
 
   return {
     title,
-    description: "Post del foro de Ohayers in the Morning.",
-    alternates: {
-      canonical: absoluteUrl(`/forum/${categorySlug}/${topicSlug}`),
-    },
-    openGraph: {
-      title: `${title} | ${siteName}`,
-      description: "Post y respuestas de la comunidad de Ohayers.",
-      url: absoluteUrl(`/forum/${categorySlug}/${topicSlug}`),
-      siteName,
+    ...getForumShareMetadata({
+      description,
+      path: `/forum/${categorySlug}/${topicSlug}`,
+      title,
       type: "article",
-    },
+    }),
   };
 }
 

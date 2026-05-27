@@ -12,3 +12,13 @@ export const redis =
         token: token!,
       })
     : null;
+
+// Upstash defaults to no-store fetches, which makes ISR pages dynamic in Next.
+export const redisForStaticReads =
+  hasRedisEnv
+    ? new Redis({
+        url: url!,
+        token: token!,
+        cache: "default",
+      })
+    : null;

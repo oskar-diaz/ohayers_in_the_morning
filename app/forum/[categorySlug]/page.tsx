@@ -1,8 +1,27 @@
 import type { Metadata } from "next";
 
 import ForumClient from "@/app/components/forum/ForumClient";
-import { absoluteUrl } from "@/lib/seo";
-import { siteName } from "@/lib/site";
+import {
+  forumDefaultDescription,
+  getForumShareMetadata,
+} from "@/lib/forum-seo";
+import { resolveSeoDescription } from "@/lib/seo";
+import { supabase } from "@/lib/supabase";
+
+type ForumCategoryMetadata = {
+  description: string | null;
+  title: string;
+};
+
+async function getForumCategoryMetadata(categorySlug: string) {
+  const { data } = await supabase
+    .from("forum_categories")
+    .select("title, description")
+    .eq("slug", categorySlug)
+    .maybeSingle();
+
+  return data as ForumCategoryMetadata | null;
+}
 
 export async function generateMetadata({
   params,
@@ -10,21 +29,20 @@ export async function generateMetadata({
   params: Promise<{ categorySlug: string }>;
 }): Promise<Metadata> {
   const { categorySlug } = await params;
-  const title = `Foro: ${categorySlug}`;
+  const category = await getForumCategoryMetadata(categorySlug);
+  const title = category?.title ? `Foro: ${category.title}` : "Foro";
+  const description = resolveSeoDescription(
+    category?.description,
+    forumDefaultDescription,
+  );
 
   return {
     title,
-    description: "Categoría del foro de Ohayers in the Morning.",
-    alternates: {
-      canonical: absoluteUrl(`/forum/${categorySlug}`),
-    },
-    openGraph: {
-      title: `${title} | ${siteName}`,
-      description: "Posts y respuestas de la comunidad de Ohayers.",
-      url: absoluteUrl(`/forum/${categorySlug}`),
-      siteName,
-      type: "website",
-    },
+    ...getForumShareMetadata({
+      description,
+      path: `/forum/${categorySlug}`,
+      title,
+    }),
   };
 }
 
