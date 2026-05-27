@@ -9,6 +9,7 @@ import { cache } from "react";
 import Comments from "@/app/components/Comments";
 import PostShareButtons from "@/app/components/PostShareButtons";
 import ZoomableImage from "@/app/components/ZoomableImage";
+import { getDisplayAuthorName } from "@/lib/display-author";
 import { formatPublicationDateTime } from "@/lib/format-date";
 import { getLikes } from "@/lib/likes";
 import {
@@ -106,7 +107,7 @@ export async function generateMetadata({
   const url = absoluteUrl(`/post/${slug}`);
   const description = resolveSeoDescription(post.excerpt, siteDescription);
   const imageUrl = getSanityOgImageUrl(post.mainImage);
-  const authorName = post.author?.name?.trim() || siteName;
+  const authorName = getDisplayAuthorName(slug, post.author?.name);
   const categoryTitles = post.categories?.map((category) => category.title) ?? [];
 
   return {
@@ -169,7 +170,7 @@ export default async function PostPage({
   }
 
   const [views, likes] = await Promise.all([getViews(slug), getLikes(slug)]);
-  const displayAuthorName = post.author?.name?.trim() || siteName;
+  const displayAuthorName = getDisplayAuthorName(slug, post.author?.name);
   const canonicalUrl = absoluteUrl(`/post/${slug}`);
   const description = resolveSeoDescription(post.excerpt, siteDescription);
   const imageUrl = getSanityOgImageUrl(post.mainImage);
