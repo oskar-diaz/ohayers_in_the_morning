@@ -278,9 +278,6 @@ export default async function PostPage({
               {post.categories[0].title}
             </Link>
           )}
-          <Link href="/forum" className="hover:opacity-60 transition">
-            Foros
-          </Link>
         </div>
 
         {/* TITLE */}

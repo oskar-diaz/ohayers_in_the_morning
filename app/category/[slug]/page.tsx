@@ -246,9 +246,6 @@ export default async function CategoryPage({
 
           <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs uppercase tracking-[0.3em] text-red-700">
             <p>Categoria: {blogCategory.title}</p>
-            <Link href="/forum" className="hover:opacity-60 transition">
-              Foros
-            </Link>
           </div>
 
           <p className="mt-5 max-w-3xl text-lg leading-relaxed text-[#4f4a43]">
@@ -280,9 +277,6 @@ export default async function CategoryPage({
 
                 <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold uppercase tracking-wide text-red-700">
                   <p>{blogCategory.title}</p>
-                  <Link href="/forum" className="hover:opacity-60 transition">
-                    Foros
-                  </Link>
                 </div>
 
                 <a href={post.url} target="_blank" rel="noopener noreferrer">
@@ -394,9 +388,6 @@ export default async function CategoryPage({
 
         <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs uppercase tracking-[0.3em] text-red-700">
           <p>Categoria: {category.title}</p>
-          <Link href="/forum" className="hover:opacity-60 transition">
-            Foros
-          </Link>
         </div>
 
         {category.description && (
@@ -432,9 +423,6 @@ export default async function CategoryPage({
               {/* CATEGORY */}
               <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold uppercase tracking-wide text-red-700">
                 {post.categories?.[0] && <p>{post.categories[0].title}</p>}
-                <Link href="/forum" className="hover:opacity-60 transition">
-                  Foros
-                </Link>
               </div>
 
               {/* TITLE */}

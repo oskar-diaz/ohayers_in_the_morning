@@ -290,9 +290,6 @@ export default async function AuthorPage({
                     {post.categories[0].title}
                   </Link>
                 )}
-                <Link href="/forum" className="transition hover:opacity-60">
-                  Foros
-                </Link>
               </div>
 
               <Link href={`/post/${postSlug}`}>
