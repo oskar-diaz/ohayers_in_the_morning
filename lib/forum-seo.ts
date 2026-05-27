@@ -10,6 +10,13 @@ export const forumShareImage = {
   width: 1254,
 };
 
+export const forumTwitterShareImage = {
+  alt: "Foro Ohayers",
+  height: 628,
+  url: absoluteUrl("/daruma-foros-twitter.png"),
+  width: 1200,
+};
+
 export const forumDefaultDescription =
   "Categorías, posts y respuestas de la comunidad de Ohayers in the Morning.";
 
@@ -43,7 +50,7 @@ export function getForumShareMetadata({
     twitter: {
       card: "summary_large_image",
       description,
-      images: [forumShareImage.url],
+      images: [forumTwitterShareImage],
       title,
     },
   };
