@@ -3695,7 +3695,7 @@ export default function ForumClient({
               </div>
 
               <div className="mt-5 space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-                {categories.map((category, index) => {
+                {getForumIndexCategories(categories).map((category, index) => {
                   const isCategoryReordering =
                     activeAction.startsWith("category-order-");
                   const canManageCurrentCategory = canManageCategory(category);
