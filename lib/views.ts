@@ -68,3 +68,32 @@ export async function incrementViews(slug: string) {
     throw error;
   }
 }
+
+export async function incrementViewsBySlug(slugs: string[]) {
+  const uniqueSlugs = [...new Set(slugs)];
+
+  if (!redis) {
+    throw new Error("Upstash Redis is not configured");
+  }
+
+  if (uniqueSlugs.length === 0) {
+    return {};
+  }
+
+  try {
+    const pipeline = redis.pipeline();
+
+    for (const slug of uniqueSlugs) {
+      pipeline.incr(getViewsKey(slug));
+    }
+
+    const results = await pipeline.exec<number[]>();
+
+    return Object.fromEntries(
+      uniqueSlugs.map((slug, index) => [slug, Number(results[index] ?? 0)]),
+    ) as Record<string, number>;
+  } catch (error) {
+    console.error("Failed to batch increment views in Upstash Redis", error);
+    throw error;
+  }
+}

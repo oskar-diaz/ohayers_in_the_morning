@@ -228,7 +228,7 @@ function getForumIndexCategories(categories: ForumCategorySummary[]) {
       return secondCategory.topicCount - firstCategory.topicCount;
     }
 
-    return firstCategory.sort_order - secondCategory.sort_order;
+    return firstCategory.title.localeCompare(secondCategory.title, "es");
   });
 }
 
@@ -1542,46 +1542,42 @@ export default function ForumClient({
     }
   }
 
-  async function loadTopicMetrics(nextTopics: Pick<ForumTopic, "id">[]) {
-    await loadForumMetrics(nextTopics.map((topic) => getForumTopicMetricKey(topic.id)));
-  }
-
   async function loadForumData() {
     setIsLoading(true);
     setErrorMessage("");
 
     try {
-      const { data: categoryRows, error: categoriesError } = await supabase
-        .from("forum_categories")
-        .select("*")
-        .eq("is_active", true)
-        .order("sort_order", {
-          ascending: true,
-        });
+      const [categoriesResponse, topicsResponse] = await Promise.all([
+        supabase
+          .from("forum_categories")
+          .select("*")
+          .eq("is_active", true)
+          .order("sort_order", {
+            ascending: true,
+          }),
+        supabase
+          .from("forum_topics")
+          .select("*, forum_categories(*)")
+          .is("hidden_at", null)
+          .order("is_pinned", {
+            ascending: false,
+          })
+          .order("last_post_at", {
+            ascending: false,
+          })
+          .limit(100),
+      ]);
 
-      if (categoriesError) {
-        throw categoriesError;
+      if (categoriesResponse.error) {
+        throw categoriesResponse.error;
       }
 
-      const nextCategories = (categoryRows ?? []) as ForumCategory[];
-
-      const { data: topicRows, error: topicsError } = await supabase
-        .from("forum_topics")
-        .select("*, forum_categories(*)")
-        .is("hidden_at", null)
-        .order("is_pinned", {
-          ascending: false,
-        })
-        .order("last_post_at", {
-          ascending: false,
-        })
-        .limit(100);
-
-      if (topicsError) {
-        throw topicsError;
+      if (topicsResponse.error) {
+        throw topicsResponse.error;
       }
 
-      const allTopics = (topicRows ?? []) as ForumTopic[];
+      const nextCategories = (categoriesResponse.data ?? []) as ForumCategory[];
+      const allTopics = (topicsResponse.data ?? []) as ForumTopic[];
       const summaries = nextCategories.map((category) => {
         const categoryTopics = allTopics
           .filter((topic) => topic.category_id === category.id)
@@ -1612,10 +1608,9 @@ export default function ForumClient({
       });
 
       setCategories(summaries);
-      await loadForumMetrics([
-        ...nextCategories.map((category) => getForumCategoryMetricKey(category.id)),
-        ...allTopics.map((topic) => getForumTopicMetricKey(topic.id)),
-      ]);
+      const categoryMetricKeys = nextCategories.map((category) =>
+        getForumCategoryMetricKey(category.id),
+      );
 
       const nextCurrentCategory =
         categorySlug
@@ -1655,11 +1650,6 @@ export default function ForumClient({
         }
 
         const nextTopic = topicRow as ForumTopic;
-        setCurrentTopic(nextTopic);
-        setTopics([]);
-        setTopicPreviews({});
-        await loadTopicMetrics([nextTopic]);
-
         const { data: postRows, error: postsError } = await supabase
           .from("forum_posts")
           .select("*")
@@ -1674,8 +1664,16 @@ export default function ForumClient({
 
         const nextPosts = (postRows ?? []) as ForumPost[];
 
+        setCurrentTopic(nextTopic);
+        setTopics([]);
+        setTopicPreviews({});
         setPosts(nextPosts);
-        await loadForumMetrics(nextPosts.map((post) => getForumPostMetricKey(post.id)));
+        setIsLoading(false);
+        void loadForumMetrics([
+          ...categoryMetricKeys,
+          getForumTopicMetricKey(nextTopic.id),
+          ...nextPosts.map((post) => getForumPostMetricKey(post.id)),
+        ]);
         return;
       }
 
@@ -1686,7 +1684,19 @@ export default function ForumClient({
         : allTopics.slice(0, 12);
 
       setTopics(nextTopics);
-      await loadTopicPreviews(nextTopics);
+      setTopicPreviews({});
+      setIsLoading(false);
+      void loadForumMetrics([
+        ...categoryMetricKeys,
+        ...(nextCurrentCategory
+          ? nextTopics.map((topic) => getForumTopicMetricKey(topic.id))
+          : summaries.flatMap((category) =>
+              category.latestTopics.map((topic) => getForumTopicMetricKey(topic.id)),
+            )),
+      ]);
+      void loadTopicPreviews(nextTopics).catch((error) => {
+        console.error("Failed to load forum topic previews", error);
+      });
     } catch (error) {
       console.error("Failed to load forum", error);
       setErrorMessage(
@@ -1862,39 +1872,49 @@ export default function ForumClient({
     const controller = new AbortController();
 
     async function trackPostViews() {
-      await Promise.all(
-        postsToTrack.map(async ({ id, metricKey }) => {
-          try {
-            const response = await fetch(
-              `/api/views/${encodeURIComponent(metricKey)}`,
-              {
-                method: "POST",
-                cache: "no-store",
-                signal: controller.signal,
-              },
-            );
+      try {
+        const response = await fetch("/api/forum/track-views", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            keys: postsToTrack.map(({ metricKey }) => metricKey),
+          }),
+          cache: "no-store",
+          signal: controller.signal,
+        });
 
-            if (!response.ok) {
-              return;
-            }
+        if (!response.ok) {
+          return;
+        }
 
-            const data = (await response.json()) as { views?: number };
-            const views = data.views;
+        const data = (await response.json()) as {
+          views?: Record<string, number>;
+        };
 
-            if (typeof views !== "number" || !Number.isFinite(views)) {
-              return;
-            }
+        startTransition(() => {
+          setForumMetrics((currentMetrics) => {
+            const nextMetrics = {
+              ...currentMetrics,
+            };
 
-            startTransition(() => {
-              updatePostMetrics(id, {
+            for (const { metricKey } of postsToTrack) {
+              const views = getForumMetricCount(data.views, metricKey);
+
+              nextMetrics[metricKey] = {
+                ...EMPTY_FORUM_TOPIC_METRICS,
+                ...currentMetrics[metricKey],
                 views,
-              });
-            });
-          } catch {
-            // Ignore aborted or transient tracking failures and keep the loaded count.
-          }
-        }),
-      );
+              };
+            }
+
+            return nextMetrics;
+          });
+        });
+      } catch {
+        // Ignore aborted or transient tracking failures and keep the loaded count.
+      }
     }
 
     void trackPostViews();
@@ -1902,7 +1922,6 @@ export default function ForumClient({
     return () => {
       controller.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTopicView, posts]);
 
   useEffect(() => {
@@ -2249,67 +2268,6 @@ export default function ForumClient({
     } catch (error) {
       console.error("Failed to delete forum category", error);
       setErrorMessage("No he podido borrar la categoría.");
-    } finally {
-      setActiveAction("");
-    }
-  }
-
-  async function moveCategory(categoryId: number, direction: -1 | 1) {
-    if (!isAdmin) {
-      return;
-    }
-
-    const currentIndex = categories.findIndex(
-      (category) => category.id === categoryId,
-    );
-    const targetIndex = currentIndex + direction;
-
-    if (
-      currentIndex < 0 ||
-      targetIndex < 0 ||
-      targetIndex >= categories.length
-    ) {
-      return;
-    }
-
-    const previousCategories = categories;
-    const nextCategories = [...categories];
-    const [movedCategory] = nextCategories.splice(currentIndex, 1);
-
-    nextCategories.splice(targetIndex, 0, movedCategory);
-
-    const reorderedCategories = nextCategories.map((category, index) => ({
-      ...category,
-      sort_order: (index + 1) * 10,
-    }));
-
-    setCategories(reorderedCategories);
-    setActiveAction(`category-order-${categoryId}`);
-    setErrorMessage("");
-    setNoticeMessage("");
-
-    try {
-      const results = await Promise.all(
-        reorderedCategories.map((category) =>
-          supabase
-            .from("forum_categories")
-            .update({
-              sort_order: category.sort_order,
-            })
-            .eq("id", category.id),
-        ),
-      );
-      const failedUpdate = results.find((result) => result.error);
-
-      if (failedUpdate?.error) {
-        throw failedUpdate.error;
-      }
-
-      setNoticeMessage("Categorías reordenadas.");
-    } catch (error) {
-      console.error("Failed to reorder forum categories", error);
-      setCategories(previousCategories);
-      setErrorMessage("No he podido reordenar las categorías.");
     } finally {
       setActiveAction("");
     }
@@ -2773,7 +2731,6 @@ export default function ForumClient({
   function renderCategoryListItem(category: ForumCategorySummary) {
     const topicLabel = formatForumCount(category.topicCount, "post", "posts");
     const canManageCurrentCategory = canManageCategory(category);
-    const isCategoryReordering = activeAction.startsWith("category-order-");
     const isDeletingCategory = activeAction === `category-delete-${category.id}`;
     const metrics = getCategoryOwnMetrics(category.id);
     const metricKey = getForumCategoryMetricKey(category.id);
@@ -2817,7 +2774,7 @@ export default function ForumClient({
               <div className="flex flex-col gap-1 sm:flex-row">
                 <button
                   type="button"
-                  disabled={isCategoryReordering || isDeletingCategory}
+                  disabled={isDeletingCategory}
                   onClick={() => openCategoryEdit(category)}
                   className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -2825,7 +2782,7 @@ export default function ForumClient({
                 </button>
                 <button
                   type="button"
-                  disabled={isCategoryReordering || isDeletingCategory}
+                  disabled={isDeletingCategory}
                   onClick={() => void deleteCategory(category)}
                   className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -3778,9 +3735,7 @@ export default function ForumClient({
               </div>
 
               <div className="mt-5 space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-                {getForumIndexCategories(categories).map((category, index) => {
-                  const isCategoryReordering =
-                    activeAction.startsWith("category-order-");
+                {getForumIndexCategories(categories).map((category) => {
                   const canManageCurrentCategory = canManageCategory(category);
                   const isDeletingCategory =
                     activeAction === `category-delete-${category.id}`;
@@ -3824,65 +3779,28 @@ export default function ForumClient({
                           </p>
                         </Link>
 
-                        {(canManageCurrentCategory || isAdmin) && (
+                        {canManageCurrentCategory && (
                           <div className="flex shrink-0 flex-col gap-1">
-                            {canManageCurrentCategory && (
-                              <>
-                                <button
-                                  type="button"
-                                  title={`Editar ${category.title}`}
-                                  aria-label={`Editar ${category.title}`}
-                                  disabled={
-                                    activeAction.startsWith("category-order-") ||
-                                    isDeletingCategory
-                                  }
-                                  onClick={() => openCategoryEdit(category)}
-                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
-                                >
-                                  <Pencil size={13} strokeWidth={2.3} />
-                                </button>
-                                <button
-                                  type="button"
-                                  title={`Borrar ${category.title}`}
-                                  aria-label={`Borrar ${category.title}`}
-                                  disabled={
-                                    activeAction.startsWith("category-order-") ||
-                                    isDeletingCategory
-                                  }
-                                  onClick={() => void deleteCategory(category)}
-                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
-                                >
-                                  <Trash2 size={13} strokeWidth={2.3} />
-                                </button>
-                              </>
-                            )}
-                            {isAdmin && (
-                              <>
-                                <button
-                                  type="button"
-                                  title={`Subir ${category.title}`}
-                                  aria-label={`Subir ${category.title}`}
-                                  disabled={index === 0 || isCategoryReordering}
-                                  onClick={() => void moveCategory(category.id, -1)}
-                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
-                                >
-                                  ↑
-                                </button>
-                                <button
-                                  type="button"
-                                  title={`Bajar ${category.title}`}
-                                  aria-label={`Bajar ${category.title}`}
-                                  disabled={
-                                    index === categories.length - 1 ||
-                                    isCategoryReordering
-                                  }
-                                  onClick={() => void moveCategory(category.id, 1)}
-                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
-                                >
-                                  ↓
-                                </button>
-                              </>
-                            )}
+                            <button
+                              type="button"
+                              title={`Editar ${category.title}`}
+                              aria-label={`Editar ${category.title}`}
+                              disabled={isDeletingCategory}
+                              onClick={() => openCategoryEdit(category)}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
+                            >
+                              <Pencil size={13} strokeWidth={2.3} />
+                            </button>
+                            <button
+                              type="button"
+                              title={`Borrar ${category.title}`}
+                              aria-label={`Borrar ${category.title}`}
+                              disabled={isDeletingCategory}
+                              onClick={() => void deleteCategory(category)}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border border-[#d6d1c8] bg-white text-sm font-black text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-35"
+                            >
+                              <Trash2 size={13} strokeWidth={2.3} />
+                            </button>
                           </div>
                         )}
                       </div>

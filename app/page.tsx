@@ -70,6 +70,10 @@ const FOURTEENTH_FEATURED_VIDEO_URL =
   "https://x.com/kkkfff1234k/status/2058249042338214193";
 const FIFTEENTH_FEATURED_VIDEO_URL =
   "https://x.com/douga111www/status/2059851363778257091";
+const SIXTEENTH_FEATURED_VIDEO_URL =
+  "https://x.com/asuka_481/status/2059534377147945398";
+const SEVENTEENTH_FEATURED_VIDEO_URL =
+  "https://x.com/Ryo_Saeba_3/status/2059935071260578121";
 
 type HomeImage = SanityImageSource & {
   alt?: string;
@@ -1002,6 +1006,14 @@ export default async function Home() {
           />
           <XEmbed
             url={FIFTEENTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={SIXTEENTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={SEVENTEENTH_FEATURED_VIDEO_URL}
             className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
           />
         </div>
