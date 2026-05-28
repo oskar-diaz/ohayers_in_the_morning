@@ -945,6 +945,14 @@ export default async function Home() {
 
         <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3 xl:items-start">
           <XEmbed
+            url={SIXTEENTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
+            url={SEVENTEENTH_FEATURED_VIDEO_URL}
+            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+          <XEmbed
             url={LEAD_FEATURED_VIDEO_URL}
             className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
           />
@@ -1006,14 +1014,6 @@ export default async function Home() {
           />
           <XEmbed
             url={FIFTEENTH_FEATURED_VIDEO_URL}
-            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
-          />
-          <XEmbed
-            url={SIXTEENTH_FEATURED_VIDEO_URL}
-            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
-          />
-          <XEmbed
-            url={SEVENTEENTH_FEATURED_VIDEO_URL}
             className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
           />
         </div>
