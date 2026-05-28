@@ -21,7 +21,7 @@ import { getViewsBySlug } from "@/lib/views";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
-export const revalidate = 300;
+export const revalidate = 60;
 
 type AuthorImage = SanityImageSource & {
   alt?: string;

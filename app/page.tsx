@@ -31,7 +31,7 @@ import { blogCategory, getWordpressPosts } from "@/lib/wordpress";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
 
-export const revalidate = 300;
+export const revalidate = 60;
 
 const VIDEO_OF_THE_DAY_URL =
   "https://x.com/HappyPunch/status/2058641063011651951";
