@@ -702,6 +702,12 @@ export default async function Home() {
       ? [{ title: blogCategory.title, slug: { current: blogCategory.slug } }]
       : []),
   ];
+  const homeForumEventsCategory = upcomingForumEvents.find((post) =>
+    isHomeForumEventsCategory(post.category),
+  )?.category;
+  const homeForumEventsCategoryUrl = `/forum/${
+    homeForumEventsCategory?.slug ?? "eventos-interesantes-mpndt4vn"
+  }`;
 
   const [views, commentCounts, likes] = await Promise.all([
     getViewsBySlug(visibleSlugs),
@@ -994,10 +1000,18 @@ export default async function Home() {
                     <p className="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
                       Agenda
                     </p>
-                    <h3 className="mt-2 newspaper-title text-[clamp(1.75rem,3vw,2.7rem)] font-black leading-[0.94] tracking-[-0.035em] text-[#111111]">
-                      Próximos eventos
-                    </h3>
+                    <Link href={homeForumEventsCategoryUrl} className="group block">
+                      <h3 className="mt-2 newspaper-title text-[clamp(1.75rem,3vw,2.7rem)] font-black leading-[0.94] tracking-[-0.035em] text-[#111111] transition group-hover:text-red-700">
+                        Próximos eventos
+                      </h3>
+                    </Link>
                   </div>
+                  <Link
+                    href={homeForumEventsCategoryUrl}
+                    className="text-xs font-black uppercase tracking-[0.18em] text-[#111111] transition hover:text-red-700"
+                  >
+                    Ver eventos
+                  </Link>
                 </div>
 
                 <div className="mt-5 space-y-4">

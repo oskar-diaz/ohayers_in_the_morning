@@ -427,6 +427,56 @@ function getTopicUrl(topic: ForumTopic, categories: ForumCategorySummary[]) {
   return category ? `/forum/${category.slug}/${topic.slug}` : "/forum";
 }
 
+function normalizeForumCategoryValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function isForumEventsCategory(
+  category?: Pick<ForumCategory, "slug" | "title"> | null,
+) {
+  if (!category) {
+    return false;
+  }
+
+  return (
+    normalizeForumCategoryValue(category.title) === "eventos interesantes" ||
+    category.slug.startsWith("eventos-interesantes")
+  );
+}
+
+function getForumTopicStartDateSortValue(topic: ForumTopic) {
+  return topic.event_start_date || "9999-12-31";
+}
+
+function sortForumEventTopics(topics: ForumTopic[]) {
+  return [...topics].sort((firstTopic, secondTopic) => {
+    const firstDate = getForumTopicStartDateSortValue(firstTopic);
+    const secondDate = getForumTopicStartDateSortValue(secondTopic);
+
+    if (firstDate !== secondDate) {
+      return firstDate.localeCompare(secondDate);
+    }
+
+    return firstTopic.title.localeCompare(secondTopic.title, "es");
+  });
+}
+
+function getForumEventTopicSections(topics: ForumTopic[], todayIsoDate: string) {
+  const sortedTopics = sortForumEventTopics(topics);
+
+  return {
+    previousTopics: sortedTopics.filter(
+      (topic) => !topic.event_start_date || topic.event_start_date < todayIsoDate,
+    ),
+    upcomingTopics: sortedTopics.filter(
+      (topic) => Boolean(topic.event_start_date && topic.event_start_date >= todayIsoDate),
+    ),
+  };
+}
+
 function getForumCategoryLatestTopicTime(category: ForumCategorySummary) {
   const value = category.latestTopic?.last_post_at;
   const time = value ? Date.parse(value) : 0;
@@ -2975,22 +3025,36 @@ export default function ForumClient({
     }
 
     const category = currentCategory ?? getForumCategoryFromTopic(currentTopic);
-    const deleteQuery = supabase
-      .from("forum_topics")
-      .delete()
-      .eq("id", currentTopic.id);
+    const topicId = currentTopic.id;
 
     setActiveAction("delete-topic");
     setErrorMessage("");
     setNoticeMessage("");
 
     try {
-      const { error } = await deleteQuery;
+      const { count, error } = await supabase
+        .from("forum_topics")
+        .delete({
+          count: "exact",
+        })
+        .eq("id", topicId);
 
       if (error) {
         throw error;
       }
 
+      if (!count) {
+        setErrorMessage(
+          "Supabase no ha borrado el post. Ejecuta el SQL de permisos de borrado del foro en Supabase.",
+        );
+        return;
+      }
+
+      setCurrentTopic(null);
+      setPosts([]);
+      setTopics((currentTopics) =>
+        currentTopics.filter((topic) => topic.id !== topicId),
+      );
       router.push(category ? `/forum/${category.slug}` : "/forum");
     } catch (error) {
       console.error("Failed to delete forum topic", error);
@@ -3011,7 +3075,12 @@ export default function ForumClient({
       return;
     }
 
-    let deleteQuery = supabase.from("forum_posts").delete().eq("id", post.id);
+    let deleteQuery = supabase
+      .from("forum_posts")
+      .delete({
+        count: "exact",
+      })
+      .eq("id", post.id);
 
     if (!isAdmin) {
       deleteQuery = deleteQuery.eq("author_id", user.id);
@@ -3022,10 +3091,17 @@ export default function ForumClient({
     setNoticeMessage("");
 
     try {
-      const { error } = await deleteQuery;
+      const { count, error } = await deleteQuery;
 
       if (error) {
         throw error;
+      }
+
+      if (!count) {
+        setErrorMessage(
+          "Supabase no ha borrado la respuesta. Ejecuta el SQL de permisos de borrado del foro en Supabase.",
+        );
+        return;
       }
 
       if (editingPostId === post.id) {
@@ -3035,6 +3111,9 @@ export default function ForumClient({
         setEditingTopicTitle("");
       }
 
+      setPosts((currentPosts) =>
+        currentPosts.filter((currentPost) => currentPost.id !== post.id),
+      );
       setNoticeMessage("Respuesta borrada.");
       await loadForumData();
     } catch (error) {
@@ -3185,7 +3264,7 @@ export default function ForumClient({
 
   function renderTopicListItem(topic: ForumTopic) {
     const category = getTopicCategory(topic, categories);
-    const topicUrl = getTopicUrl(topic, categories);
+    const topicUrl = category ? `/forum/${category.slug}/${topic.slug}` : "/forum";
     const preview = topicPreviews[topic.id];
     const previewContent = preview?.content || topic.excerpt || "";
     const previewHtml = previewContent ? renderForumPreviewHtml(previewContent) : "";
@@ -3196,6 +3275,7 @@ export default function ForumClient({
       topic.event_start_date,
       topic.event_end_date,
     );
+    const shouldShowTopicMetaRow = topic.is_pinned || topic.is_locked;
 
     return (
       <article
@@ -3243,19 +3323,16 @@ export default function ForumClient({
             )}
 
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7a746b]">
-                {topic.is_pinned && <span>Fijado</span>}
-                {topic.is_locked && <span>Cerrado</span>}
-                {category && (
-                  <Link href={`/forum/${category.slug}`} className="hover:text-[#111111]">
-                    {category.title}
-                  </Link>
-                )}
-              </div>
+              {shouldShowTopicMetaRow && (
+                <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7a746b]">
+                  {topic.is_pinned && <span>Fijado</span>}
+                  {topic.is_locked && <span>Cerrado</span>}
+                </div>
+              )}
 
               <Link
                 href={topicUrl}
-                className="mt-2 block newspaper-title text-[clamp(1.65rem,3vw,2.4rem)] font-black leading-[0.98] hover:opacity-70"
+                className={`${shouldShowTopicMetaRow ? "mt-2" : ""} block newspaper-title text-[clamp(1.65rem,3vw,2.4rem)] font-black leading-[0.98] hover:opacity-70`}
               >
                 {topic.title}
               </Link>
@@ -3309,6 +3386,39 @@ export default function ForumClient({
 
         </div>
       </article>
+    );
+  }
+
+  function renderEventTopicListSection({
+    emptyMessage,
+    title,
+    topics: sectionTopics,
+  }: {
+    emptyMessage: string;
+    title: string;
+    topics: ForumTopic[];
+  }) {
+    return (
+      <section>
+        <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#d6d1c8] pb-2">
+          <h3 className="text-sm font-black uppercase leading-none tracking-[0.22em] text-red-700">
+            {title}
+          </h3>
+          <span className="text-xs font-black uppercase tracking-[0.16em] text-[#7a746b]">
+            {sectionTopics.length.toLocaleString("es-ES")}
+          </span>
+        </div>
+
+        <div className="editorial-card rounded-[2rem] px-5 py-4 sm:px-7">
+          {sectionTopics.length > 0 ? (
+            sectionTopics.map((topic) => renderTopicListItem(topic))
+          ) : (
+            <div className="py-8 text-center text-sm text-[#5f5952]">
+              <p>{emptyMessage}</p>
+            </div>
+          )}
+        </div>
+      </section>
     );
   }
 
@@ -4031,6 +4141,11 @@ export default function ForumClient({
     );
   }
 
+  const currentForumEventTopicSections =
+    isCategoryView && isForumEventsCategory(currentCategory)
+      ? getForumEventTopicSections(topics, getForumIsoDate(new Date()))
+      : null;
+
   return (
     <>
       {renderForumHeader()}
@@ -4295,22 +4410,37 @@ export default function ForumClient({
               )}
 
               {isCategoryView ? (
-                <div className="editorial-card rounded-[2rem] px-5 py-4 sm:px-7">
-                  {topics.length > 0 ? (
-                    topics.map((topic) => renderTopicListItem(topic))
-                  ) : (
-                    <div className="py-8 text-center text-[#5f5952]">
-                      <p>Todavía no hay posts por aquí.</p>
-                      <button
-                        type="button"
-                        onClick={openTopicComposer}
-                        className="editorial-cta editorial-cta-dark mt-5 !px-4 !py-2 !text-[0.68rem]"
-                      >
-                        Crear post
-                      </button>
-                    </div>
-                  )}
-                </div>
+                currentForumEventTopicSections ? (
+                  <div className="space-y-8">
+                    {renderEventTopicListSection({
+                      emptyMessage: "No hay próximos eventos.",
+                      title: "Próximos eventos",
+                      topics: currentForumEventTopicSections.upcomingTopics,
+                    })}
+                    {renderEventTopicListSection({
+                      emptyMessage: "No hay eventos anteriores.",
+                      title: "Eventos anteriores",
+                      topics: currentForumEventTopicSections.previousTopics,
+                    })}
+                  </div>
+                ) : (
+                  <div className="editorial-card rounded-[2rem] px-5 py-4 sm:px-7">
+                    {topics.length > 0 ? (
+                      topics.map((topic) => renderTopicListItem(topic))
+                    ) : (
+                      <div className="py-8 text-center text-[#5f5952]">
+                        <p>Todavía no hay posts por aquí.</p>
+                        <button
+                          type="button"
+                          onClick={openTopicComposer}
+                          className="editorial-cta editorial-cta-dark mt-5 !px-4 !py-2 !text-[0.68rem]"
+                        >
+                          Crear post
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
               ) : (
                 <div className="grid gap-4">
                   {categories.length > 0 ? (

@@ -3,7 +3,12 @@ returns boolean
 language sql
 stable
 as $$
-  select lower(coalesce(auth.jwt() ->> 'email', '')) in ('koki142@gmail.com');
+  select lower(coalesce(
+    nullif(auth.jwt() ->> 'email', ''),
+    nullif(auth.jwt() #>> '{user_metadata,email}', ''),
+    nullif(auth.jwt() #>> '{app_metadata,email}', ''),
+    ''
+  )) in ('koki142@gmail.com');
 $$;
 
 alter table public.forum_categories
