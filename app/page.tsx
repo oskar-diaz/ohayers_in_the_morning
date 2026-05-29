@@ -955,6 +955,22 @@ export default async function Home() {
       </section>
 
       <section className="max-w-7xl mx-auto px-6 py-14 border-t newspaper-border">
+        <h2 className="newspaper-title text-[clamp(2.4rem,5vw,4.6rem)] font-black leading-[0.92] tracking-[-0.045em]">
+          La tienduqui
+        </h2>
+        <iframe
+          style={{ borderRadius: 24, border: "none" }}
+          src="https://embed.creator-spring.com/widget?slug=my-store-10bbce4&per=30&currency=EUR&page=1&layout=carousel-wide&theme=light"
+          title="La tienduqui"
+          width="100%"
+          height="420"
+          loading="lazy"
+          className="mt-8 block h-[420px] w-full"
+          data-reactroot=""
+        />
+      </section>
+
+      <section className="max-w-7xl mx-auto px-6 py-14 border-t newspaper-border">
         <p className="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
           Las chorradas de twitter
         </p>
