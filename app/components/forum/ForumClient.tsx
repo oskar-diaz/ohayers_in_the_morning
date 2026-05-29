@@ -1310,6 +1310,7 @@ export default function ForumClient({
     }
 
     return (
+      isAdmin ||
       post.author_id === user.id ||
       (isTopicOpeningPost(post, depth) && currentTopic?.author_id === user.id)
     );
@@ -2552,14 +2553,19 @@ export default function ForumClient({
           throw new Error("Missing forum topic while editing its opening post.");
         }
 
-        const { error: topicError } = await supabase
+        let updateTopicQuery = supabase
           .from("forum_topics")
           .update({
             excerpt: getPlainExcerpt(content),
             title,
           })
-          .eq("id", topicId)
-          .eq("author_id", user.id);
+          .eq("id", topicId);
+
+        if (!isAdmin) {
+          updateTopicQuery = updateTopicQuery.eq("author_id", user.id);
+        }
+
+        const { error: topicError } = await updateTopicQuery;
 
         if (topicError) {
           throw topicError;
@@ -2573,7 +2579,7 @@ export default function ForumClient({
         })
         .eq("id", post.id);
 
-      if (!isTopicRootPost) {
+      if (!isAdmin && !isTopicRootPost) {
         updatePostQuery = updatePostQuery.eq("author_id", user.id);
       }
 
