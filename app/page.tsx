@@ -505,30 +505,38 @@ function HomeForumPostPreviewLink({ post }: { post: HomeForumPostPreview }) {
       href={post.url}
       className={`group grid gap-4 border-b border-[#d6d1c8] pb-4 transition last:border-b-0 last:pb-0 ${
         post.calendarDateRange
-          ? "grid-cols-[92px_minmax(0,1fr)] sm:grid-cols-[92px_minmax(0,1fr)_auto]"
+          ? "grid-cols-[7.75rem_minmax(0,1fr)] sm:grid-cols-[92px_minmax(0,1fr)_auto]"
           : "grid-cols-[92px_minmax(0,1fr)]"
       }`}
     >
-      <div className="relative h-[74px] overflow-hidden bg-[#ece8df]">
-        {post.thumbnailUrl ? (
-          <div
-            className="absolute inset-0 bg-cover bg-center transition duration-500 group-hover:scale-[1.04]"
-            style={{
-              backgroundImage: getCssImageUrl(post.thumbnailUrl),
-            }}
-          />
-        ) : (
-          <div
-            className="relative flex h-full items-center justify-center"
-            style={{ backgroundColor: post.category.color }}
-          >
-            <Image
-              src="/daruma-foros.png"
-              alt=""
-              fill
-              sizes="92px"
-              className="object-contain p-2"
+      <div className="flex w-full flex-col items-center gap-3 sm:block">
+        <div className="relative h-[74px] w-[92px] overflow-hidden bg-[#ece8df]">
+          {post.thumbnailUrl ? (
+            <div
+              className="absolute inset-0 bg-cover bg-center transition duration-500 group-hover:scale-[1.04]"
+              style={{
+                backgroundImage: getCssImageUrl(post.thumbnailUrl),
+              }}
             />
+          ) : (
+            <div
+              className="relative flex h-full items-center justify-center"
+              style={{ backgroundColor: post.category.color }}
+            >
+              <Image
+                src="/daruma-foros.png"
+                alt=""
+                fill
+                sizes="92px"
+                className="object-contain p-2"
+              />
+            </div>
+          )}
+        </div>
+
+        {post.calendarDateRange && (
+          <div className="sm:hidden">
+            <HomeForumCalendarBadge dateRange={post.calendarDateRange} />
           </div>
         )}
       </div>
@@ -555,7 +563,7 @@ function HomeForumPostPreviewLink({ post }: { post: HomeForumPostPreview }) {
       </div>
 
       {post.calendarDateRange && (
-        <div className="col-start-2 justify-self-end sm:col-start-3 sm:row-start-1 sm:justify-self-end">
+        <div className="hidden sm:col-start-3 sm:row-start-1 sm:block sm:justify-self-end">
           <HomeForumCalendarBadge dateRange={post.calendarDateRange} />
         </div>
       )}
