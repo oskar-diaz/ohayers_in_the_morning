@@ -164,6 +164,10 @@ function getForumShareUrl(path: string) {
   return new URL(path, siteUrl).toString();
 }
 
+function getForumProfileUrl(userId: string) {
+  return `/forum/profile/${encodeURIComponent(userId)}`;
+}
+
 function getForumMetricCount(
   metrics: Record<string, number> | undefined,
   key: string,
@@ -518,7 +522,7 @@ function renderForumSmiliesToHtml(value: string) {
           smilie.label,
         )}" title="${escapeForumAttribute(
           part,
-        )}" class="forum-smilie inline-block h-auto max-h-10 w-auto -translate-y-[2px] align-middle object-contain" />`;
+        )}" class="forum-smilie inline-block h-auto w-auto -translate-y-[2px] object-contain" />`;
       }
 
       return `<span class="inline-block -translate-y-px font-mono text-[0.92em]" aria-label="${escapeForumAttribute(
@@ -743,7 +747,7 @@ function SmilieBar({ onPick }: { onPick: (value: string) => void }) {
               <img
                 src={smilie.src}
                 alt={smilie.label}
-                className="h-auto max-h-10 w-auto object-contain"
+                className="h-auto w-auto object-contain"
               />
             ) : (
               smilie.value
@@ -2684,7 +2688,7 @@ export default function ForumClient({
 
               {previewHtml && (
                 <div
-                  className="mt-3 line-clamp-2 text-sm leading-6 text-[#5f5952] [&_.forum-smilie]:max-h-7"
+                  className="mt-3 line-clamp-2 text-sm leading-6 text-[#5f5952]"
                   dangerouslySetInnerHTML={{
                     __html: previewHtml,
                   }}
@@ -2692,14 +2696,22 @@ export default function ForumClient({
               )}
 
               <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#6a645c]">
-                <span className="inline-flex min-w-0 items-center gap-3">
-                  <ForumAvatar
-                    avatarUrl={topic.author_avatar_url}
-                    label={topic.author_name}
-                    size="sm"
-                  />
-                  <span className="min-w-0 truncate">
-                    {topic.author_name} · {formatForumDate(topic.last_post_at)}
+                <span className="inline-flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+                  <Link
+                    href={getForumProfileUrl(topic.author_id)}
+                    className="inline-flex min-w-0 items-center gap-3 hover:text-[#111111] hover:underline"
+                  >
+                    <ForumAvatar
+                      avatarUrl={topic.author_avatar_url}
+                      label={topic.author_name}
+                      size="sm"
+                    />
+                    <span className="min-w-0 truncate">
+                      {topic.author_name}
+                    </span>
+                  </Link>
+                  <span>
+                    {formatForumDate(topic.last_post_at)}
                   </span>
                 </span>
                 <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
@@ -2832,8 +2844,13 @@ export default function ForumClient({
                     href={getTopicUrl(topic, categories)}
                     className="block rounded-xl px-2 py-1.5 transition hover:bg-[#f5efe4]"
                   >
-                    <span className="block text-sm font-bold leading-5 text-[#111111] transition hover:text-red-700">
-                      {topic.title}
+                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm leading-5 text-[#111111]">
+                      <span className="font-bold transition hover:text-red-700">
+                        {topic.title}
+                      </span>
+                      <span className="text-[0.68rem] font-semibold text-[#7a746b]">
+                        - por {topic.author_name}
+                      </span>
                     </span>
                     <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c]">
                       <span>
@@ -3052,15 +3069,20 @@ export default function ForumClient({
         >
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
-              <ForumAvatar
-                avatarUrl={post.author_avatar_url}
-                label={post.author_name}
-                size="md"
-              />
+              <Link href={getForumProfileUrl(post.author_id)} className="hover:opacity-75">
+                <ForumAvatar
+                  avatarUrl={post.author_avatar_url}
+                  label={post.author_name}
+                  size="md"
+                />
+              </Link>
               <div className="min-w-0">
-                <p className="truncate text-[1.02rem] font-semibold">
+                <Link
+                  href={getForumProfileUrl(post.author_id)}
+                  className="block truncate text-[1.02rem] font-semibold hover:text-[#111111] hover:underline"
+                >
                   {post.author_name}
-                </p>
+                </Link>
                 <p className="mt-1 text-xs uppercase tracking-[0.16em] text-[#7a746b]">
                   {formatForumDate(post.created_at)}
                 </p>
