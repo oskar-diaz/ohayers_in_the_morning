@@ -535,10 +535,10 @@ export default async function Home() {
 
       {/* HERO */}
       {featured && (
-        <section className="max-w-7xl mx-auto px-6 py-12 grid lg:grid-cols-[1.4fr_1fr] gap-12 border-b newspaper-border">
+        <section className="max-w-7xl mx-auto px-6 py-14 lg:py-12 grid gap-0 lg:grid-cols-[1.4fr_1fr] lg:gap-12 border-b newspaper-border">
           {/* IMAGE */}
           <Link href={`/post/${featured.slug.current}`}>
-            <div className="relative h-[420px] md:h-[560px] overflow-hidden flex items-center justify-center">
+            <div className="relative mb-5 h-[320px] overflow-hidden bg-[#ece8df] lg:mb-0 lg:h-[560px] lg:bg-transparent flex items-center justify-center">
               {featured.mainImage && (
                 <Image
                   src={urlFor(featured.mainImage).url()}
@@ -550,8 +550,9 @@ export default async function Home() {
                   className="
                     w-full
                     h-full
-                    object-contain
-                    p-4
+                    object-cover
+                    lg:object-contain
+                    lg:p-4
                     hover:scale-[1.01]
                     transition
                     duration-500
@@ -566,12 +567,12 @@ export default async function Home() {
             {featuredPrimaryCategory?.title &&
               (featuredPrimaryCategory.slug?.current ? (
                 <Link href={`/category/${featuredPrimaryCategory.slug.current}`}>
-                  <p className="uppercase text-red-700 font-semibold tracking-[0.18em] text-sm mb-4 hover:opacity-60 transition">
+                  <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3 hover:opacity-60 transition lg:mb-4 lg:text-sm lg:tracking-[0.18em]">
                     {featuredPrimaryCategory.title}
                   </p>
                 </Link>
               ) : (
-                <p className="uppercase text-red-700 font-semibold tracking-[0.18em] text-sm mb-4">
+                <p className="uppercase text-red-700 font-semibold tracking-wide text-xs mb-3 lg:mb-4 lg:text-sm lg:tracking-[0.18em]">
                   {featuredPrimaryCategory.title}
                 </p>
               ))}
@@ -580,33 +581,48 @@ export default async function Home() {
               <h2
                 className="
                   newspaper-title
-                  text-[clamp(2.2rem,4vw,4.5rem)]
+                  text-[clamp(2rem,9vw,3.2rem)]
+                  lg:text-[clamp(2.2rem,4vw,4.5rem)]
                   font-black
-                  leading-[0.92]
-                  tracking-[-0.04em]
+                  leading-[0.95]
+                  lg:leading-[0.92]
+                  lg:tracking-[-0.04em]
                   hover:opacity-70
                   transition
-                  max-w-[11ch]
+                  lg:max-w-[11ch]
                 "
               >
                 {featured.title}
               </h2>
             </Link>
 
-            <StoryMeta
-              slug={featured.slug.current}
-              publishedAt={featured.publishedAt}
-              views={views[featured.slug.current] ?? 0}
-              likes={likes[featured.slug.current] ?? 0}
-              comments={commentCounts[featured.slug.current] ?? 0}
-            />
+            <div className="lg:hidden">
+              <StoryMeta
+                slug={featured.slug.current}
+                publishedAt={featured.publishedAt}
+                views={views[featured.slug.current] ?? 0}
+                likes={likes[featured.slug.current] ?? 0}
+                comments={commentCounts[featured.slug.current] ?? 0}
+                compact
+              />
+            </div>
 
-            <p className="mt-8 text-2xl text-gray-700 leading-relaxed font-light">
+            <div className="hidden lg:block">
+              <StoryMeta
+                slug={featured.slug.current}
+                publishedAt={featured.publishedAt}
+                views={views[featured.slug.current] ?? 0}
+                likes={likes[featured.slug.current] ?? 0}
+                comments={commentCounts[featured.slug.current] ?? 0}
+              />
+            </div>
+
+            <p className="mt-4 text-lg text-gray-700 leading-relaxed font-light lg:mt-8 lg:text-2xl">
               {featured.excerpt}
             </p>
 
             {/* AUTHOR */}
-            <div className="mt-10">
+            <div className="mt-6 lg:mt-10">
               <div>
                 <p className="text-sm font-medium uppercase tracking-[0.14em] text-[#7a746b]">
                   {featuredAuthor?.slug ? (
