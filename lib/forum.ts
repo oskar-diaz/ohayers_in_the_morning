@@ -313,6 +313,8 @@ export type ForumTopic = {
   slug: string;
   title: string;
   excerpt: string | null;
+  event_start_date: string | null;
+  event_end_date: string | null;
   author_id: string;
   author_name: string;
   author_avatar_url: string | null;
@@ -399,6 +401,68 @@ export function formatForumDate(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function getForumDateOnly(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+
+  if (!match) {
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function formatForumCalendarDate(value?: string | null) {
+  const date = getForumDateOnly(value);
+
+  if (!date) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+export function formatForumTopicDateRange(
+  startDate?: string | null,
+  endDate?: string | null,
+) {
+  const startLabel = formatForumCalendarDate(startDate);
+
+  if (!startLabel) {
+    return "";
+  }
+
+  const endLabel = formatForumCalendarDate(endDate);
+
+  if (!endLabel || startDate === endDate) {
+    return startLabel;
+  }
+
+  return `Del ${startLabel} al ${endLabel}`;
 }
 
 export function slugifyForumValue(value: string) {

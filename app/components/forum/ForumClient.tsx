@@ -7,6 +7,8 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   Heart,
   Image as ImageIcon,
@@ -57,6 +59,7 @@ import {
   ForumTopic,
   buildForumPostTree,
   formatForumDate,
+  formatForumTopicDateRange,
   getForumCategoryFromTopic,
   getForumInitials,
   getForumUserAvatarUrl,
@@ -68,6 +71,8 @@ import { supabase } from "@/lib/supabase";
 
 type ForumClientProps = {
   categorySlug?: string;
+  initialTopicEventEndDate?: string | null;
+  initialTopicEventStartDate?: string | null;
   profileOnly?: boolean;
   topicSlug?: string;
 };
@@ -95,6 +100,25 @@ type ForumTextAlign = "left" | "center" | "right";
 type ProfileFormState = {
   bio: string;
   displayName: string;
+};
+
+type ForumTopicDateFormState = {
+  enabled: boolean;
+  endDate: string;
+  isRange: boolean;
+  startDate: string;
+};
+
+type ForumCalendarDatePart = {
+  date: string;
+  day: string;
+  month: string;
+};
+
+type ForumCalendarDateRange = {
+  end: ForumCalendarDatePart | null;
+  label: string;
+  start: ForumCalendarDatePart;
 };
 
 declare module "@tiptap/core" {
@@ -140,6 +164,197 @@ const EMPTY_FORUM_TOPIC_METRICS: ForumTopicMetrics = {
   likes: 0,
   views: 0,
 };
+const EMPTY_FORUM_TOPIC_DATE_FORM: ForumTopicDateFormState = {
+  enabled: false,
+  endDate: "",
+  isRange: false,
+  startDate: "",
+};
+const FORUM_DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const FORUM_SPANISH_DATE_FORMATTER = new Intl.DateTimeFormat("es-ES", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+const FORUM_SPANISH_MONTH_FORMATTER = new Intl.DateTimeFormat("es-ES", {
+  month: "long",
+  year: "numeric",
+});
+const FORUM_SPANISH_WEEKDAYS = ["L", "M", "X", "J", "V", "S", "D"];
+
+function getEmptyForumTopicDateForm() {
+  return {
+    ...EMPTY_FORUM_TOPIC_DATE_FORM,
+  };
+}
+
+function getForumLocalDate(value?: string | null) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function getForumIsoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getForumDateMonthStart(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addForumDateMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function isForumDateBefore(firstDate: Date, secondDate: Date) {
+  return getForumIsoDate(firstDate) < getForumIsoDate(secondDate);
+}
+
+function getForumCalendarCells(monthDate: Date) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const firstWeekday = (firstDay.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (Date | null)[] = Array.from({ length: firstWeekday }, () => null);
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    cells.push(new Date(year, month, day));
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push(null);
+  }
+
+  return cells;
+}
+
+function getForumTopicDateForm(topic: ForumTopic): ForumTopicDateFormState {
+  const hasStartDate = Boolean(topic.event_start_date);
+  const hasEndDate = Boolean(topic.event_end_date);
+
+  return {
+    enabled: hasStartDate || hasEndDate,
+    endDate: topic.event_end_date ?? "",
+    isRange: hasEndDate && topic.event_end_date !== topic.event_start_date,
+    startDate: topic.event_start_date ?? "",
+  };
+}
+
+function getForumTopicDatePayload(value: ForumTopicDateFormState) {
+  if (!value.enabled) {
+    return {
+      endDate: null,
+      error: "",
+      startDate: null,
+    };
+  }
+
+  const startDate = value.startDate.trim();
+  const endDate = value.isRange ? value.endDate.trim() : "";
+
+  if (!FORUM_DATE_INPUT_PATTERN.test(startDate)) {
+    return {
+      endDate: null,
+      error: "Elige una fecha para el post.",
+      startDate: null,
+    };
+  }
+
+  if (value.isRange && !FORUM_DATE_INPUT_PATTERN.test(endDate)) {
+    return {
+      endDate: null,
+      error: "Elige la fecha final del rango.",
+      startDate: null,
+    };
+  }
+
+  if (value.isRange && endDate < startDate) {
+    return {
+      endDate: null,
+      error: "La fecha final no puede ser anterior a la inicial.",
+      startDate: null,
+    };
+  }
+
+  return {
+    endDate: value.isRange ? endDate : null,
+    error: "",
+    startDate,
+  };
+}
+
+function getForumCalendarDatePart(
+  value?: string | null,
+): ForumCalendarDatePart | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return {
+    date: value ?? "",
+    day: match[3],
+    month: new Intl.DateTimeFormat("es-ES", {
+      month: "long",
+    }).format(date).toUpperCase(),
+  };
+}
+
+function getForumCalendarDateRange(
+  startDate?: string | null,
+  endDate?: string | null,
+): ForumCalendarDateRange | null {
+  const start = getForumCalendarDatePart(startDate);
+
+  if (!start) {
+    return null;
+  }
+
+  const end = getForumCalendarDatePart(endDate);
+  const visibleEnd = end && end.date !== start.date ? end : null;
+
+  return {
+    end: visibleEnd,
+    label: formatForumTopicDateRange(startDate, endDate),
+    start,
+  };
+}
 
 function isForumTextAlign(value: unknown): value is ForumTextAlign {
   return (
@@ -724,6 +939,295 @@ function ForumAvatar({
   );
 }
 
+function ForumTopicDateFields({
+  onChange,
+  value,
+}: {
+  onChange: (value: ForumTopicDateFormState) => void;
+  value: ForumTopicDateFormState;
+}) {
+  return (
+    <div className="rounded-[1.5rem] border border-[#d6d1c8] bg-[#f8f4ed] px-4 py-4">
+      <label className="inline-flex items-center gap-3 text-sm font-black text-[#111111]">
+        <input
+          type="checkbox"
+          checked={value.enabled}
+          onChange={(event) => {
+            const enabled = event.target.checked;
+
+            onChange({
+              enabled,
+              endDate: enabled ? value.endDate : "",
+              isRange: enabled ? value.isRange : false,
+              startDate: enabled ? value.startDate : "",
+            });
+          }}
+          className="h-4 w-4 accent-red-700"
+        />
+        Añade fechas
+      </label>
+
+      {value.enabled && (
+        <div className="mt-4 space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ForumSpanishDatePicker
+              label={value.isRange ? "Desde" : "Fecha"}
+              value={value.startDate}
+              onChange={(startDate) =>
+                onChange({
+                  ...value,
+                  endDate:
+                    value.endDate && value.endDate < startDate ? "" : value.endDate,
+                  startDate,
+                })
+              }
+            />
+
+            {value.isRange && (
+              <ForumSpanishDatePicker
+                label="Hasta"
+                min={value.startDate}
+                value={value.endDate}
+                onChange={(endDate) =>
+                  onChange({
+                    ...value,
+                    endDate,
+                  })
+                }
+              />
+            )}
+          </div>
+
+          <label className="inline-flex items-center gap-3 text-sm font-semibold text-[#5f5952]">
+            <input
+              type="checkbox"
+              checked={value.isRange}
+              onChange={(event) => {
+                const isRange = event.target.checked;
+
+                onChange({
+                  ...value,
+                  endDate: isRange ? value.endDate : "",
+                  isRange,
+                });
+              }}
+              className="h-4 w-4 accent-red-700"
+            />
+            Rango de fechas
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ForumSpanishDatePicker({
+  label,
+  min,
+  onChange,
+  value,
+}: {
+  label: string;
+  min?: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  const selectedDate = useMemo(() => getForumLocalDate(value), [value]);
+  const minDate = useMemo(() => getForumLocalDate(min), [min]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(() =>
+    getForumDateMonthStart(selectedDate ?? minDate ?? new Date()),
+  );
+  const calendarCells = useMemo(
+    () => getForumCalendarCells(visibleMonth),
+    [visibleMonth],
+  );
+  const displayValue = selectedDate
+    ? FORUM_SPANISH_DATE_FORMATTER.format(selectedDate)
+    : "";
+
+  return (
+    <div className="relative" lang="es-ES">
+      <span className="block text-xs font-black uppercase tracking-[0.16em] text-[#7a746b]">
+        {label}
+      </span>
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
+        aria-label={`${label}: ${displayValue || "sin fecha"}`}
+        onClick={() => {
+          if (!isOpen) {
+            setVisibleMonth(
+              getForumDateMonthStart(selectedDate ?? minDate ?? new Date()),
+            );
+          }
+
+          setIsOpen((currentValue) => !currentValue);
+        }}
+        className={`editorial-field mt-2 flex min-h-[2.75rem] items-center justify-between gap-3 !rounded-[1rem] !bg-[#fffdf8] !px-3 !py-2.5 text-left text-sm ${
+          displayValue ? "text-[#111111]" : "text-[#7a746b]"
+        }`}
+      >
+        <span>{displayValue || "dd/mm/aaaa"}</span>
+        <span className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-red-700">
+          ES
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full z-30 mt-2 w-[18rem] max-w-[calc(100vw-3rem)] rounded-[1.25rem] border border-[#111111] bg-[#fffdf8] p-3 text-[#111111] shadow-[0_18px_38px_rgba(17,17,17,0.16)]">
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              aria-label="Mes anterior"
+              onClick={() =>
+                setVisibleMonth((currentMonth) =>
+                  addForumDateMonths(currentMonth, -1),
+                )
+              }
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#d6d1c8] bg-[#fffdf8] transition hover:border-[#111111]"
+            >
+              <ChevronLeft size={16} strokeWidth={2.4} />
+            </button>
+            <p className="text-sm font-black capitalize">
+              {FORUM_SPANISH_MONTH_FORMATTER.format(visibleMonth)}
+            </p>
+            <button
+              type="button"
+              aria-label="Mes siguiente"
+              onClick={() =>
+                setVisibleMonth((currentMonth) =>
+                  addForumDateMonths(currentMonth, 1),
+                )
+              }
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#d6d1c8] bg-[#fffdf8] transition hover:border-[#111111]"
+            >
+              <ChevronRight size={16} strokeWidth={2.4} />
+            </button>
+          </div>
+
+          <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[0.62rem] font-black uppercase text-[#7a746b]">
+            {FORUM_SPANISH_WEEKDAYS.map((weekday) => (
+              <span key={weekday}>{weekday}</span>
+            ))}
+          </div>
+          <div className="mt-1 grid grid-cols-7 gap-1">
+            {calendarCells.map((date, index) => {
+              if (!date) {
+                return <span key={`empty-${index}`} />;
+              }
+
+              const isoDate = getForumIsoDate(date);
+              const isSelected = isoDate === value;
+              const isDisabled = Boolean(minDate && isForumDateBefore(date, minDate));
+
+              return (
+                <button
+                  key={isoDate}
+                  type="button"
+                  disabled={isDisabled}
+                  onClick={() => {
+                    onChange(isoDate);
+                    setIsOpen(false);
+                  }}
+                  className={`h-8 rounded-full text-sm font-bold transition ${
+                    isSelected
+                      ? "bg-[#111111] text-[#fffdf8]"
+                      : "bg-transparent text-[#111111] hover:bg-[#f5efe4]"
+                  } disabled:cursor-not-allowed disabled:text-[#c2bbb2] disabled:hover:bg-transparent`}
+                >
+                  {date.getDate()}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ForumTopicCalendarBadge({
+  dateRange,
+  size = "lg",
+}: {
+  dateRange: ForumCalendarDateRange;
+  size?: "compact" | "lg";
+}) {
+  const isCompact = size === "compact";
+  const collapseMonth =
+    dateRange.end && dateRange.end.month === dateRange.start.month;
+
+  return (
+    <div
+      aria-label={dateRange.label}
+      className={`shrink-0 border border-[#111111] bg-[#fffdf8] text-center text-[#111111] shadow-[4px_4px_0_rgba(17,17,17,0.08)] ${
+        isCompact
+          ? "w-[7.75rem] px-2.5 py-2"
+          : "w-40 border-2 px-3 py-3 shadow-[6px_6px_0_rgba(17,17,17,0.1)]"
+      }`}
+    >
+      <div
+        className={
+          dateRange.end
+            ? `grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center ${
+                isCompact ? "gap-x-2" : "gap-x-2.5"
+              }`
+            : "flex justify-center"
+        }
+      >
+        <span className="flex min-w-0 flex-col items-center">
+          <span
+            className={`${isCompact ? "text-2xl" : "text-4xl"} font-black leading-none tabular-nums`}
+          >
+            {dateRange.start.day}
+          </span>
+        </span>
+        {dateRange.end && (
+          <span className="flex min-w-3 flex-col items-center text-red-700">
+            <span
+              className={`font-black leading-none text-red-700 ${
+                isCompact ? "text-sm" : "text-lg"
+              }`}
+            >
+              -
+            </span>
+          </span>
+        )}
+        {dateRange.end ? (
+          <span className="flex min-w-0 flex-col items-center">
+            <span
+              className={`${isCompact ? "text-2xl" : "text-4xl"} font-black leading-none tabular-nums`}
+            >
+              {dateRange.end.day}
+            </span>
+          </span>
+        ) : null}
+      </div>
+      <div
+        className={`mt-1 flex items-center justify-center gap-x-1 whitespace-nowrap font-black uppercase leading-none text-[#5f5952] ${
+          dateRange.end && !collapseMonth
+            ? isCompact
+              ? "text-[0.46rem]"
+              : "text-[0.58rem]"
+            : isCompact
+              ? "text-[0.58rem]"
+              : "text-[0.72rem]"
+        }`}
+      >
+        <span>{dateRange.start.month}</span>
+        {dateRange.end && !collapseMonth && (
+          <>
+            <span className="text-red-700">-</span>
+            <span>{dateRange.end.month}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SmilieBar({ onPick }: { onPick: (value: string) => void }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -1238,6 +1742,8 @@ function RichTextEditor({
 
 export default function ForumClient({
   categorySlug,
+  initialTopicEventEndDate = null,
+  initialTopicEventStartDate = null,
   profileOnly = false,
   topicSlug,
 }: ForumClientProps) {
@@ -1265,6 +1771,9 @@ export default function ForumClient({
   const [noticeMessage, setNoticeMessage] = useState("");
   const [newTopicTitle, setNewTopicTitle] = useState("");
   const [newTopicContent, setNewTopicContent] = useState("");
+  const [newTopicDateForm, setNewTopicDateForm] = useState<ForumTopicDateFormState>(
+    getEmptyForumTopicDateForm,
+  );
   const [isTopicComposerOpen, setIsTopicComposerOpen] = useState(false);
   const [isCategoryComposerOpen, setIsCategoryComposerOpen] = useState(false);
   const [newCategoryTitle, setNewCategoryTitle] = useState("");
@@ -1276,6 +1785,8 @@ export default function ForumClient({
   const [replyParent, setReplyParent] = useState<ForumPost | null>(null);
   const [editingPostContent, setEditingPostContent] = useState("");
   const [editingPostId, setEditingPostId] = useState<number | null>(null);
+  const [editingTopicDateForm, setEditingTopicDateForm] =
+    useState<ForumTopicDateFormState>(getEmptyForumTopicDateForm);
   const [editingTopicTitle, setEditingTopicTitle] = useState("");
 
   const user = session?.user ?? null;
@@ -1290,6 +1801,13 @@ export default function ForumClient({
     ? categories.find((category) => category.id === currentCategory.id) ?? null
     : null;
   const shouldShowCategorySidebar = isCategoryView || isTopicView;
+  const currentTopicEventStartDate =
+    currentTopic?.event_start_date ?? initialTopicEventStartDate;
+  const currentTopicEventEndDate =
+    currentTopic?.event_end_date ?? initialTopicEventEndDate;
+  const currentTopicCalendarDateRange = currentTopic
+    ? getForumCalendarDateRange(currentTopicEventStartDate, currentTopicEventEndDate)
+    : null;
 
   function canManageCategory(category: ForumCategory | null | undefined) {
     return Boolean(
@@ -1562,7 +2080,7 @@ export default function ForumClient({
           }),
         supabase
           .from("forum_topics")
-          .select("*, forum_categories(*)")
+          .select("*, event_start_date, event_end_date, forum_categories(*)")
           .is("hidden_at", null)
           .order("is_pinned", {
             ascending: false,
@@ -1637,7 +2155,7 @@ export default function ForumClient({
       if (topicSlug && nextCurrentCategory) {
         const { data: topicRow, error: topicError } = await supabase
           .from("forum_topics")
-          .select("*, forum_categories(*)")
+          .select("*, event_start_date, event_end_date, forum_categories(*)")
           .eq("category_id", nextCurrentCategory.id)
           .eq("slug", topicSlug)
           .maybeSingle();
@@ -2010,6 +2528,7 @@ export default function ForumClient({
     const category =
       categories.find((item) => item.id === categoryId) ??
       (currentCategory as ForumCategorySummary | null);
+    const datePayload = getForumTopicDatePayload(newTopicDateForm);
 
     if (!categoryId || !category) {
       setErrorMessage("Elige una categoría para el post.");
@@ -2018,6 +2537,11 @@ export default function ForumClient({
 
     if (title.length < 4 || !hasForumMeaningfulContent(content)) {
       setErrorMessage("El título y el contenido necesitan un poco más de chicha.");
+      return;
+    }
+
+    if (datePayload.error) {
+      setErrorMessage(datePayload.error);
       return;
     }
 
@@ -2036,6 +2560,8 @@ export default function ForumClient({
           author_id: user.id,
           author_name: nextProfile.display_name,
           category_id: categoryId,
+          event_end_date: datePayload.endDate,
+          event_start_date: datePayload.startDate,
           excerpt: getPlainExcerpt(content),
           slug: topicSlugValue,
           title,
@@ -2063,6 +2589,7 @@ export default function ForumClient({
 
       setNewTopicTitle("");
       setNewTopicContent("");
+      setNewTopicDateForm(getEmptyForumTopicDateForm());
       setIsTopicComposerOpen(false);
       router.push(`/forum/${category.slug}/${topic.slug}`);
     } catch (error) {
@@ -2504,6 +3031,7 @@ export default function ForumClient({
       if (editingPostId === post.id) {
         setEditingPostId(null);
         setEditingPostContent("");
+        setEditingTopicDateForm(getEmptyForumTopicDateForm());
         setEditingTopicTitle("");
       }
 
@@ -2524,6 +3052,11 @@ export default function ForumClient({
     setEditingTopicTitle(
       isTopicOpeningPost(post, depth) && currentTopic ? currentTopic.title : "",
     );
+    setEditingTopicDateForm(
+      isTopicOpeningPost(post, depth) && currentTopic
+        ? getForumTopicDateForm(currentTopic)
+        : getEmptyForumTopicDateForm(),
+    );
   }
 
   async function savePostEdit(post: ForumPost, depth = 0) {
@@ -2534,6 +3067,13 @@ export default function ForumClient({
     const content = sanitizeForumContentForStorage(editingPostContent);
     const isTopicRootPost = isTopicOpeningPost(post, depth);
     const title = editingTopicTitle.trim();
+    const datePayload = isTopicRootPost
+      ? getForumTopicDatePayload(editingTopicDateForm)
+      : {
+          endDate: null,
+          error: "",
+          startDate: null,
+        };
 
     if (!hasForumMeaningfulContent(content)) {
       setErrorMessage("El contenido necesita un poco más de texto.");
@@ -2542,6 +3082,11 @@ export default function ForumClient({
 
     if (isTopicRootPost && title.length < 4) {
       setErrorMessage("El título necesita un poco más de chicha.");
+      return;
+    }
+
+    if (datePayload.error) {
+      setErrorMessage(datePayload.error);
       return;
     }
 
@@ -2560,6 +3105,8 @@ export default function ForumClient({
         let updateTopicQuery = supabase
           .from("forum_topics")
           .update({
+            event_end_date: datePayload.endDate,
+            event_start_date: datePayload.startDate,
             excerpt: getPlainExcerpt(content),
             title,
           })
@@ -2595,6 +3142,7 @@ export default function ForumClient({
 
       setEditingPostId(null);
       setEditingPostContent("");
+      setEditingTopicDateForm(getEmptyForumTopicDateForm());
       setEditingTopicTitle("");
       setNoticeMessage("Cambios guardados.");
       await loadForumData();
@@ -2644,28 +3192,54 @@ export default function ForumClient({
     const thumbnailUrl = preview?.thumbnailUrl ?? null;
     const metrics = getTopicMetrics(topic.id);
     const metricKey = getForumTopicMetricKey(topic.id);
+    const topicDateRange = getForumCalendarDateRange(
+      topic.event_start_date,
+      topic.event_end_date,
+    );
 
     return (
       <article
         key={topic.id}
-        className="border-b border-[#d6d1c8] py-5 last:border-b-0"
+        className="relative border-b border-[#d6d1c8] py-5 pr-28 last:border-b-0 sm:pr-32"
       >
+        <div className="absolute right-0 top-5 text-center">
+          <div className="rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2">
+            <p className="text-lg font-black">{topic.reply_count}</p>
+            <p className="text-[0.62rem] uppercase tracking-[0.14em] text-[#7a746b]">
+              respuestas
+            </p>
+          </div>
+        </div>
+
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-start">
-            {thumbnailUrl && (
-              <Link
-                href={topicUrl}
-                className="block h-24 w-full shrink-0 overflow-hidden rounded-xl border border-[#d6d1c8] bg-[#ece8df] sm:w-32"
-                aria-label={topic.title}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={thumbnailUrl}
-                  alt=""
-                  loading="lazy"
-                  className="h-full w-full object-cover"
-                />
-              </Link>
+          <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-stretch">
+            {(thumbnailUrl || topicDateRange) && (
+              <div className="flex w-full shrink-0 flex-col items-center gap-3 sm:w-32">
+                {thumbnailUrl && (
+                  <Link
+                    href={topicUrl}
+                    className="block h-24 w-full shrink-0 overflow-hidden rounded-xl border border-[#d6d1c8] bg-[#ece8df]"
+                    aria-label={topic.title}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={thumbnailUrl}
+                      alt=""
+                      loading="lazy"
+                      className="h-full w-full object-cover"
+                    />
+                  </Link>
+                )}
+
+                {topicDateRange && (
+                  <div className="flex w-full justify-center sm:mt-auto">
+                    <ForumTopicCalendarBadge
+                      dateRange={topicDateRange}
+                      size="compact"
+                    />
+                  </div>
+                )}
+              </div>
             )}
 
             <div className="min-w-0 flex-1">
@@ -2733,14 +3307,6 @@ export default function ForumClient({
             </div>
           </div>
 
-          <div className="flex shrink-0 gap-2 text-center">
-            <div className="rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2">
-              <p className="text-lg font-black">{topic.reply_count}</p>
-              <p className="text-[0.62rem] uppercase tracking-[0.14em] text-[#7a746b]">
-                respuestas
-              </p>
-            </div>
-          </div>
         </div>
       </article>
     );
@@ -2837,39 +3403,53 @@ export default function ForumClient({
             <div className="mt-3 space-y-2">
               {category.latestTopics.map((topic) => {
                 const topicMetrics = getTopicMetrics(topic.id);
+                const topicDateRange = getForumCalendarDateRange(
+                  topic.event_start_date,
+                  topic.event_end_date,
+                );
 
                 return (
                   <Link
                     key={topic.id}
                     href={getTopicUrl(topic, categories)}
-                    className="block rounded-xl px-2 py-1.5 transition hover:bg-[#f5efe4]"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-xl px-2 py-1.5 transition hover:bg-[#f5efe4]"
                   >
-                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm leading-5 text-[#111111]">
-                      <span className="font-bold transition hover:text-red-700">
-                        {topic.title}
+                    <span className="min-w-0">
+                      <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm leading-5 text-[#111111]">
+                        <span className="font-bold transition hover:text-red-700">
+                          {topic.title}
+                        </span>
+                        <span className="text-[0.68rem] font-semibold text-[#7a746b]">
+                          - por {topic.author_name}
+                        </span>
                       </span>
-                      <span className="text-[0.68rem] font-semibold text-[#7a746b]">
-                        - por {topic.author_name}
+                      <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c]">
+                        <span>
+                          {formatForumCount(
+                            topic.reply_count,
+                            "respuesta",
+                            "respuestas",
+                          )}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Eye size={13} strokeWidth={2.2} />
+                          {topicMetrics.views.toLocaleString()} vistas
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Heart size={13} strokeWidth={2.2} />
+                          {topicMetrics.likes.toLocaleString()} likes
+                        </span>
+                        <span>actualizado {formatForumDate(topic.last_post_at)}</span>
                       </span>
                     </span>
-                    <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c]">
-                      <span>
-                        {formatForumCount(
-                          topic.reply_count,
-                          "respuesta",
-                          "respuestas",
-                        )}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Eye size={13} strokeWidth={2.2} />
-                        {topicMetrics.views.toLocaleString()} vistas
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Heart size={13} strokeWidth={2.2} />
-                        {topicMetrics.likes.toLocaleString()} likes
-                      </span>
-                      <span>actualizado {formatForumDate(topic.last_post_at)}</span>
-                    </span>
+                    {topicDateRange && (
+                      <div className="justify-self-end">
+                        <ForumTopicCalendarBadge
+                          dateRange={topicDateRange}
+                          size="compact"
+                        />
+                      </div>
+                    )}
                   </Link>
                 );
               })}
@@ -2943,6 +3523,11 @@ export default function ForumClient({
                 className="editorial-field"
                 maxLength={140}
                 required
+              />
+
+              <ForumTopicDateFields
+                value={newTopicDateForm}
+                onChange={setNewTopicDateForm}
               />
 
               <RichTextEditor
@@ -3178,14 +3763,21 @@ export default function ForumClient({
               className="mt-5 space-y-4"
             >
               {isTopicOpeningPost(post, depth) && (
-                <input
-                  value={editingTopicTitle}
-                  onChange={(event) => setEditingTopicTitle(event.target.value)}
-                  placeholder="Título del post"
-                  className="editorial-field"
-                  maxLength={140}
-                  required
-                />
+                <>
+                  <input
+                    value={editingTopicTitle}
+                    onChange={(event) => setEditingTopicTitle(event.target.value)}
+                    placeholder="Título del post"
+                    className="editorial-field"
+                    maxLength={140}
+                    required
+                  />
+
+                  <ForumTopicDateFields
+                    value={editingTopicDateForm}
+                    onChange={setEditingTopicDateForm}
+                  />
+                </>
               )}
 
               <RichTextEditor
@@ -3200,6 +3792,7 @@ export default function ForumClient({
                   onClick={() => {
                     setEditingPostId(null);
                     setEditingPostContent("");
+                    setEditingTopicDateForm(getEmptyForumTopicDateForm());
                     setEditingTopicTitle("");
                   }}
                   className="editorial-link-button"
@@ -3461,7 +4054,7 @@ export default function ForumClient({
             <>
               <div className="mb-8">
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7a746b]">
                       {currentTopic.is_pinned && <span>Fijado</span>}
                       {currentTopic.is_locked && <span>Cerrado</span>}
@@ -3496,41 +4089,51 @@ export default function ForumClient({
                     </div>
                   </div>
 
-                  {isAdmin && (
-                    <div className="flex shrink-0 flex-wrap items-center gap-1 sm:justify-end">
-                      <button
-                        type="button"
-                        disabled={activeAction === "topic"}
-                        onClick={() =>
-                          void updateTopicModeration({
-                            is_locked: !currentTopic.is_locked,
-                          })
-                        }
-                        className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {currentTopic.is_locked ? "Abrir" : "Cerrar"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={activeAction === "topic"}
-                        onClick={() =>
-                          void updateTopicModeration({
-                            hidden_at: new Date().toISOString(),
-                            hidden_by: user?.id ?? null,
-                          })
-                        }
-                        className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Ocultar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={activeAction === "delete-topic"}
-                        onClick={() => void deleteCurrentTopic()}
-                        className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Borrar
-                      </button>
+                  {(currentTopicCalendarDateRange || isAdmin) && (
+                    <div className="flex shrink-0 flex-col items-start gap-3 sm:ml-auto sm:items-end">
+                      {currentTopicCalendarDateRange && (
+                        <ForumTopicCalendarBadge
+                          dateRange={currentTopicCalendarDateRange}
+                        />
+                      )}
+
+                      {isAdmin && (
+                        <div className="flex flex-wrap items-center gap-1 sm:justify-end">
+                          <button
+                            type="button"
+                            disabled={activeAction === "topic"}
+                            onClick={() =>
+                              void updateTopicModeration({
+                                is_locked: !currentTopic.is_locked,
+                              })
+                            }
+                            className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {currentTopic.is_locked ? "Abrir" : "Cerrar"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={activeAction === "topic"}
+                            onClick={() =>
+                              void updateTopicModeration({
+                                hidden_at: new Date().toISOString(),
+                                hidden_by: user?.id ?? null,
+                              })
+                            }
+                            className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Ocultar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={activeAction === "delete-topic"}
+                            onClick={() => void deleteCurrentTopic()}
+                            className="editorial-link-button !px-2.5 !py-1 !text-[0.62rem] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Borrar
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

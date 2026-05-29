@@ -10,6 +10,8 @@ import { resolveSeoDescription } from "@/lib/seo";
 import { supabase } from "@/lib/supabase";
 
 type ForumTopicMetadata = {
+  event_end_date: string | null;
+  event_start_date: string | null;
   excerpt: string | null;
   id: number;
   imageUrl: string | null;
@@ -17,6 +19,8 @@ type ForumTopicMetadata = {
 };
 
 type ForumTopicRow = {
+  event_end_date?: string | null;
+  event_start_date?: string | null;
   excerpt: string | null;
   id: number;
   title: string;
@@ -37,12 +41,33 @@ async function getForumTopicMetadata(categorySlug: string, topicSlug: string) {
     return null;
   }
 
-  const { data: topic } = await supabase
+  let topic: unknown = null;
+  let topicError: { code?: string } | null = null;
+  const topicWithDatesResponse = await supabase
     .from("forum_topics")
-    .select("id, title, excerpt")
+    .select("id, title, excerpt, event_start_date, event_end_date")
     .eq("category_id", category.id)
     .eq("slug", topicSlug)
     .maybeSingle();
+
+  topic = topicWithDatesResponse.data;
+  topicError = topicWithDatesResponse.error;
+
+  if (topicError?.code === "42703") {
+    const topicFallbackResponse = await supabase
+      .from("forum_topics")
+      .select("id, title, excerpt")
+      .eq("category_id", category.id)
+      .eq("slug", topicSlug)
+      .maybeSingle();
+
+    topic = topicFallbackResponse.data;
+    topicError = topicFallbackResponse.error;
+  }
+
+  if (topicError) {
+    return null;
+  }
 
   if (!topic) {
     return null;
@@ -66,6 +91,8 @@ async function getForumTopicMetadata(categorySlug: string, topicSlug: string) {
 
   return {
     ...topicRow,
+    event_end_date: topicRow.event_end_date ?? null,
+    event_start_date: topicRow.event_start_date ?? null,
     imageUrl,
   } satisfies ForumTopicMetadata;
 }
@@ -102,6 +129,14 @@ export default async function ForumTopicPage({
   params: Promise<{ categorySlug: string; topicSlug: string }>;
 }) {
   const { categorySlug, topicSlug } = await params;
+  const topic = await getForumTopicMetadata(categorySlug, topicSlug);
 
-  return <ForumClient categorySlug={categorySlug} topicSlug={topicSlug} />;
+  return (
+    <ForumClient
+      categorySlug={categorySlug}
+      initialTopicEventEndDate={topic?.event_end_date ?? null}
+      initialTopicEventStartDate={topic?.event_start_date ?? null}
+      topicSlug={topicSlug}
+    />
+  );
 }

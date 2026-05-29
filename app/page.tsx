@@ -11,7 +11,7 @@ import XEmbed from "@/app/components/XEmbed";
 import { getCommentCountsBySlug } from "@/lib/comments";
 import { getDisplayAuthor } from "@/lib/display-author";
 import { formatPublicationDateTime } from "@/lib/format-date";
-import { formatForumDate } from "@/lib/forum";
+import { formatForumDate, formatForumTopicDateRange } from "@/lib/forum";
 import { getForumPostShareImageUrl } from "@/lib/forum-seo";
 import { getLikesBySlug } from "@/lib/likes";
 import {
@@ -39,6 +39,8 @@ const LEAD_FEATURED_VIDEO_URL =
   "https://x.com/asuka_481/status/2059159320374497679";
 const FEATURED_INSTAGRAM_VIDEO_URL =
   "https://www.instagram.com/p/DY3cTmRSHjZ/";
+const SECOND_FEATURED_INSTAGRAM_VIDEO_URL =
+  "https://www.instagram.com/p/DY59TB-yDDn/";
 const IKULIBRO_AMAZON_URL =
   "https://www.amazon.es/Afinando-sue%C3%B1o-ikulibro-Oskar-D%C3%ADaz-ebook/dp/B0GM93MYKH/ref=tmm_kin_swatch_0?_encoding=UTF8&dib_tag=se&dib=eyJ2IjoiMSJ9.GagX4K2VHCp3osrR7eFQMA.uTGTdUJ2JbLALboZOZ2uaS0AHGMQLs9K-78MsCJ_3Z4&qid=1779925756&sr=8-1";
 const IKULIBRO_SITE_URL = "https://ikulibro.ikublog.com/reviews";
@@ -116,6 +118,8 @@ type HomeForumTopicRow = {
   slug: string;
   title: string;
   author_name: string;
+  event_end_date?: string | null;
+  event_start_date?: string | null;
   reply_count: number;
   last_post_at: string;
   forum_categories?: HomeForumCategory | HomeForumCategory[] | null;
@@ -126,9 +130,22 @@ type HomeForumPostContentRow = {
   topic_id: number;
 };
 
+type HomeForumCalendarDatePart = {
+  date: string;
+  day: string;
+  month: string;
+};
+
+type HomeForumCalendarDateRange = {
+  end: HomeForumCalendarDatePart | null;
+  label: string;
+  start: HomeForumCalendarDatePart;
+};
+
 type HomeForumPostPreview = {
   authorName: string;
   category: HomeForumCategory;
+  calendarDateRange: HomeForumCalendarDateRange | null;
   likes: number;
   replyCount: number;
   thumbnailUrl: string | null;
@@ -137,6 +154,9 @@ type HomeForumPostPreview = {
   url: string;
   views: number;
 };
+
+const HOME_FORUM_POST_LIMIT = 7;
+const HOME_FORUM_TOPIC_LOOKAHEAD_LIMIT = 40;
 
 const getPosts = cache(async () => {
   return client.fetch<HomePost[]>(`
@@ -179,18 +199,278 @@ function getHomeForumCategory(
   return category?.slug && category.title ? category : null;
 }
 
+function normalizeHomeForumCategoryValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function isHomeForumEventsCategory(category: HomeForumCategory) {
+  return (
+    normalizeHomeForumCategoryValue(category.title) === "eventos interesantes" ||
+    category.slug.startsWith("eventos-interesantes")
+  );
+}
+
+function getHomeForumTodayIsoDate() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = `${today.getMonth() + 1}`.padStart(2, "0");
+  const day = `${today.getDate()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getHomeForumCalendarDatePart(
+  value?: string | null,
+): HomeForumCalendarDatePart | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return {
+    date: value ?? "",
+    day: match[3],
+    month: new Intl.DateTimeFormat("es-ES", {
+      month: "long",
+    }).format(date).toUpperCase(),
+  };
+}
+
+function getHomeForumCalendarDateRange(
+  startDate?: string | null,
+  endDate?: string | null,
+): HomeForumCalendarDateRange | null {
+  const start = getHomeForumCalendarDatePart(startDate);
+
+  if (!start) {
+    return null;
+  }
+
+  const end = getHomeForumCalendarDatePart(endDate);
+  const visibleEnd = end && end.date !== start.date ? end : null;
+
+  return {
+    end: visibleEnd,
+    label: formatForumTopicDateRange(startDate, endDate),
+    start,
+  };
+}
+
+function HomeForumCalendarBadge({
+  dateRange,
+}: {
+  dateRange: HomeForumCalendarDateRange;
+}) {
+  const collapseMonth =
+    dateRange.end && dateRange.end.month === dateRange.start.month;
+
+  return (
+    <div
+      aria-label={dateRange.label}
+      className="w-[7.75rem] shrink-0 border border-[#111111] bg-[#fffdf8] px-2.5 py-2 text-center text-[#111111] shadow-[4px_4px_0_rgba(17,17,17,0.08)]"
+    >
+      <div
+        className={
+          dateRange.end
+            ? "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2"
+            : "flex justify-center"
+        }
+      >
+        <span className="flex min-w-0 flex-col items-center">
+          <span className="text-2xl font-black leading-none tabular-nums">
+            {dateRange.start.day}
+          </span>
+        </span>
+        {dateRange.end && (
+          <span className="flex min-w-3 flex-col items-center text-red-700">
+            <span className="text-sm font-black leading-none">-</span>
+          </span>
+        )}
+        {dateRange.end ? (
+          <span className="flex min-w-0 flex-col items-center">
+            <span className="text-2xl font-black leading-none tabular-nums">
+              {dateRange.end.day}
+            </span>
+          </span>
+        ) : null}
+      </div>
+      <div
+        className={`mt-1 flex items-center justify-center gap-x-1 whitespace-nowrap font-black uppercase leading-none text-[#5f5952] ${
+          dateRange.end && !collapseMonth ? "text-[0.46rem]" : "text-[0.58rem]"
+        }`}
+      >
+        <span>{dateRange.start.month}</span>
+        {dateRange.end && !collapseMonth && (
+          <>
+            <span className="text-red-700">-</span>
+            <span>{dateRange.end.month}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+async function getHomeForumPostPreviews(
+  topics: HomeForumTopicRow[],
+): Promise<HomeForumPostPreview[]> {
+  if (topics.length === 0) {
+    return [];
+  }
+
+  const topicIds = topics.map((topic) => topic.id);
+  const { data: postRows, error: postsError } = await supabase
+    .from("forum_posts")
+    .select("topic_id, content")
+    .in("topic_id", topicIds)
+    .is("hidden_at", null)
+    .order("created_at", {
+      ascending: true,
+    })
+    .limit(160);
+
+  if (postsError) {
+    throw postsError;
+  }
+
+  const thumbnailsByTopic = new Map<number, string>();
+
+  for (const post of (postRows ?? []) as HomeForumPostContentRow[]) {
+    if (thumbnailsByTopic.has(post.topic_id)) {
+      continue;
+    }
+
+    const thumbnailUrl = getForumPostShareImageUrl(post.content);
+
+    if (thumbnailUrl) {
+      thumbnailsByTopic.set(post.topic_id, thumbnailUrl);
+    }
+  }
+
+  const metricKeys = topics.map((topic) => `forum-topic-${topic.id}`);
+  const [views, likes] = await Promise.all([
+    getViewsBySlug(metricKeys),
+    getLikesBySlug(metricKeys),
+  ]);
+
+  return topics.flatMap((topic) => {
+    const category = getHomeForumCategory(topic);
+
+    if (!category) {
+      return [];
+    }
+
+    const metricKey = `forum-topic-${topic.id}`;
+
+    return [
+      {
+        authorName: topic.author_name,
+        category,
+        calendarDateRange: getHomeForumCalendarDateRange(
+          topic.event_start_date,
+          topic.event_end_date,
+        ),
+        likes: likes[metricKey] ?? 0,
+        replyCount: topic.reply_count,
+        thumbnailUrl: thumbnailsByTopic.get(topic.id) ?? null,
+        title: topic.title,
+        updatedAt: topic.last_post_at,
+        url: `/forum/${category.slug}/${topic.slug}`,
+        views: views[metricKey] ?? 0,
+      },
+    ];
+  });
+}
+
 const getLatestForumPosts = cache(async (): Promise<HomeForumPostPreview[]> => {
   try {
-    const { data: topicRows, error: topicsError } = await supabase
+    let topicRows: unknown[] | null = null;
+    let topicsError: { code?: string } | null = null;
+    const topicsWithDatesResponse = await supabase
       .from("forum_topics")
       .select(
-        "id, slug, title, author_name, reply_count, last_post_at, forum_categories(slug, title, color)",
+        "id, slug, title, author_name, event_start_date, event_end_date, reply_count, last_post_at, forum_categories(slug, title, color)",
       )
       .is("hidden_at", null)
       .order("last_post_at", {
         ascending: false,
       })
-      .limit(7);
+      .limit(HOME_FORUM_TOPIC_LOOKAHEAD_LIMIT);
+
+    topicRows = topicsWithDatesResponse.data;
+    topicsError = topicsWithDatesResponse.error;
+
+    if (topicsError?.code === "42703") {
+      const topicsFallbackResponse = await supabase
+        .from("forum_topics")
+        .select(
+          "id, slug, title, author_name, reply_count, last_post_at, forum_categories(slug, title, color)",
+        )
+        .is("hidden_at", null)
+        .order("last_post_at", {
+          ascending: false,
+        })
+        .limit(HOME_FORUM_TOPIC_LOOKAHEAD_LIMIT);
+
+      topicRows = topicsFallbackResponse.data;
+      topicsError = topicsFallbackResponse.error;
+    }
+
+    if (topicsError) {
+      throw topicsError;
+    }
+
+    const topics = ((topicRows ?? []) as HomeForumTopicRow[])
+      .filter((topic) => {
+        const category = getHomeForumCategory(topic);
+
+        return Boolean(category && !isHomeForumEventsCategory(category));
+      })
+      .slice(0, HOME_FORUM_POST_LIMIT);
+
+    return getHomeForumPostPreviews(topics);
+  } catch (error) {
+    console.error("Failed to load latest forum posts", error);
+
+    return [];
+  }
+});
+
+const getUpcomingForumEvents = cache(async (): Promise<HomeForumPostPreview[]> => {
+  try {
+    const today = getHomeForumTodayIsoDate();
+    const { data: topicRows, error: topicsError } = await supabase
+      .from("forum_topics")
+      .select(
+        "id, slug, title, author_name, event_start_date, event_end_date, reply_count, last_post_at, forum_categories(slug, title, color)",
+      )
+      .is("hidden_at", null)
+      .gte("event_start_date", today)
+      .order("event_start_date", {
+        ascending: true,
+      })
+      .limit(HOME_FORUM_POST_LIMIT);
+
+    if (topicsError?.code === "42703") {
+      return [];
+    }
 
     if (topicsError) {
       throw topicsError;
@@ -200,70 +480,9 @@ const getLatestForumPosts = cache(async (): Promise<HomeForumPostPreview[]> => {
       Boolean(getHomeForumCategory(topic)),
     );
 
-    if (topics.length === 0) {
-      return [];
-    }
-
-    const topicIds = topics.map((topic) => topic.id);
-    const { data: postRows, error: postsError } = await supabase
-      .from("forum_posts")
-      .select("topic_id, content")
-      .in("topic_id", topicIds)
-      .is("hidden_at", null)
-      .order("created_at", {
-        ascending: true,
-      })
-      .limit(120);
-
-    if (postsError) {
-      throw postsError;
-    }
-
-    const thumbnailsByTopic = new Map<number, string>();
-
-    for (const post of (postRows ?? []) as HomeForumPostContentRow[]) {
-      if (thumbnailsByTopic.has(post.topic_id)) {
-        continue;
-      }
-
-      const thumbnailUrl = getForumPostShareImageUrl(post.content);
-
-      if (thumbnailUrl) {
-        thumbnailsByTopic.set(post.topic_id, thumbnailUrl);
-      }
-    }
-
-    const metricKeys = topics.map((topic) => `forum-topic-${topic.id}`);
-    const [views, likes] = await Promise.all([
-      getViewsBySlug(metricKeys),
-      getLikesBySlug(metricKeys),
-    ]);
-
-    return topics.flatMap((topic) => {
-      const category = getHomeForumCategory(topic);
-
-      if (!category) {
-        return [];
-      }
-
-      const metricKey = `forum-topic-${topic.id}`;
-
-      return [
-        {
-          authorName: topic.author_name,
-          category,
-          likes: likes[metricKey] ?? 0,
-          replyCount: topic.reply_count,
-          thumbnailUrl: thumbnailsByTopic.get(topic.id) ?? null,
-          title: topic.title,
-          updatedAt: topic.last_post_at,
-          url: `/forum/${category.slug}/${topic.slug}`,
-          views: views[metricKey] ?? 0,
-        },
-      ];
-    });
+    return getHomeForumPostPreviews(topics);
   } catch (error) {
-    console.error("Failed to load latest forum posts", error);
+    console.error("Failed to load upcoming forum events", error);
 
     return [];
   }
@@ -278,6 +497,70 @@ function getPostsWithSlug(posts: HomePost[]) {
 
 function getCssImageUrl(value: string) {
   return `url("${value.replace(/["\\]/g, "\\$&")}")`;
+}
+
+function HomeForumPostPreviewLink({ post }: { post: HomeForumPostPreview }) {
+  return (
+    <Link
+      href={post.url}
+      className={`group grid gap-4 border-b border-[#d6d1c8] pb-4 transition last:border-b-0 last:pb-0 ${
+        post.calendarDateRange
+          ? "grid-cols-[92px_minmax(0,1fr)] sm:grid-cols-[92px_minmax(0,1fr)_auto]"
+          : "grid-cols-[92px_minmax(0,1fr)]"
+      }`}
+    >
+      <div className="relative h-[74px] overflow-hidden bg-[#ece8df]">
+        {post.thumbnailUrl ? (
+          <div
+            className="absolute inset-0 bg-cover bg-center transition duration-500 group-hover:scale-[1.04]"
+            style={{
+              backgroundImage: getCssImageUrl(post.thumbnailUrl),
+            }}
+          />
+        ) : (
+          <div
+            className="relative flex h-full items-center justify-center"
+            style={{ backgroundColor: post.category.color }}
+          >
+            <Image
+              src="/daruma-foros.png"
+              alt=""
+              fill
+              sizes="92px"
+              className="object-contain p-2"
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-red-700">
+          {post.category.title}
+        </p>
+        <h3 className="mt-1 line-clamp-2 text-base font-black leading-tight text-[#111111] transition group-hover:text-red-700">
+          {post.title}
+        </h3>
+        <p className="mt-2 truncate text-xs font-semibold text-[#7a746b]">
+          {post.authorName} · {formatForumDate(post.updatedAt)}
+        </p>
+        <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c]">
+          <span>
+            {post.replyCount === 1
+              ? "1 respuesta"
+              : `${post.replyCount.toLocaleString()} respuestas`}
+          </span>
+          <span>{post.views.toLocaleString()} vistas</span>
+          <span>{post.likes.toLocaleString()} likes</span>
+        </p>
+      </div>
+
+      {post.calendarDateRange && (
+        <div className="col-start-2 justify-self-end sm:col-start-3 sm:row-start-1 sm:justify-self-end">
+          <HomeForumCalendarBadge dateRange={post.calendarDateRange} />
+        </div>
+      )}
+    </Link>
+  );
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -395,12 +678,14 @@ function StoryMeta({
 
 
 export default async function Home() {
-  const [posts, categories, latestForumPosts, blogPosts] = await Promise.all([
-    getPosts(),
-    getCategories(),
-    getLatestForumPosts(),
-    getWordpressPosts(),
-  ]);
+  const [posts, categories, latestForumPosts, upcomingForumEvents, blogPosts] =
+    await Promise.all([
+      getPosts(),
+      getCategories(),
+      getLatestForumPosts(),
+      getUpcomingForumEvents(),
+      getWordpressPosts(),
+    ]);
   const postsWithSlug = getPostsWithSlug(posts);
   const featured = postsWithSlug[0];
   const latest = featured ? postsWithSlug.slice(1) : postsWithSlug;
@@ -650,11 +935,15 @@ export default async function Home() {
             </p>
 
             <h2 className="mt-4 text-center newspaper-title text-[clamp(2.6rem,5vw,4.8rem)] font-black leading-[0.92] tracking-[-0.045em]">
-              Video destacado
+              Videos destacados
             </h2>
 
             <InstagramEmbed
               url={FEATURED_INSTAGRAM_VIDEO_URL}
+              className="mx-auto mt-8 w-full max-w-[560px]"
+            />
+            <InstagramEmbed
+              url={SECOND_FEATURED_INSTAGRAM_VIDEO_URL}
               className="mx-auto mt-8 w-full max-w-[560px]"
             />
           </div>
@@ -681,56 +970,7 @@ export default async function Home() {
             {latestForumPosts.length > 0 ? (
               <div className="mt-5 space-y-4">
                 {latestForumPosts.map((post) => (
-                  <Link
-                    key={post.url}
-                    href={post.url}
-                    className="group grid grid-cols-[92px_1fr] gap-4 border-b border-[#d6d1c8] pb-4 transition last:border-b-0 last:pb-0"
-                  >
-                    <div className="relative h-[74px] overflow-hidden bg-[#ece8df]">
-                      {post.thumbnailUrl ? (
-                        <div
-                          className="absolute inset-0 bg-cover bg-center transition duration-500 group-hover:scale-[1.04]"
-                          style={{
-                            backgroundImage: getCssImageUrl(post.thumbnailUrl),
-                          }}
-                        />
-                      ) : (
-                        <div
-                          className="relative flex h-full items-center justify-center"
-                          style={{ backgroundColor: post.category.color }}
-                        >
-                          <Image
-                            src="/daruma-foros.png"
-                            alt=""
-                            fill
-                            sizes="92px"
-                            className="object-contain p-2"
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-red-700">
-                        {post.category.title}
-                      </p>
-                      <h3 className="mt-1 line-clamp-2 text-base font-black leading-tight text-[#111111] transition group-hover:text-red-700">
-                        {post.title}
-                      </h3>
-                      <p className="mt-2 truncate text-xs font-semibold text-[#7a746b]">
-                        {post.authorName} · {formatForumDate(post.updatedAt)}
-                      </p>
-                      <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c]">
-                        <span>
-                          {post.replyCount === 1
-                            ? "1 respuesta"
-                            : `${post.replyCount.toLocaleString()} respuestas`}
-                        </span>
-                        <span>{post.views.toLocaleString()} vistas</span>
-                        <span>{post.likes.toLocaleString()} likes</span>
-                      </p>
-                    </div>
-                  </Link>
+                  <HomeForumPostPreviewLink key={post.url} post={post} />
                 ))}
               </div>
             ) : (
@@ -744,6 +984,27 @@ export default async function Home() {
                 >
                   Abrir foro
                 </Link>
+              </div>
+            )}
+
+            {upcomingForumEvents.length > 0 && (
+              <div className="mt-8 border-t border-[#d6d1c8] pt-5">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
+                      Agenda
+                    </p>
+                    <h3 className="mt-2 newspaper-title text-[clamp(1.75rem,3vw,2.7rem)] font-black leading-[0.94] tracking-[-0.035em] text-[#111111]">
+                      Próximos eventos
+                    </h3>
+                  </div>
+                </div>
+
+                <div className="mt-5 space-y-4">
+                  {upcomingForumEvents.map((post) => (
+                    <HomeForumPostPreviewLink key={post.url} post={post} />
+                  ))}
+                </div>
               </div>
             )}
           </aside>

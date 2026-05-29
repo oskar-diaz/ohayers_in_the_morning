@@ -43,6 +43,8 @@ create table if not exists public.forum_topics (
   author_id uuid not null references auth.users(id) on delete cascade,
   author_name text not null,
   author_avatar_url text,
+  event_start_date date,
+  event_end_date date,
   reply_count integer not null default 0,
   post_count integer not null default 0,
   is_locked boolean not null default false,
@@ -58,6 +60,13 @@ create table if not exists public.forum_topics (
   ),
   constraint forum_topics_excerpt_length check (
     excerpt is null or char_length(excerpt) <= 220
+  ),
+  constraint forum_topics_event_dates_order check (
+    event_end_date is null
+    or (
+      event_start_date is not null
+      and event_end_date >= event_start_date
+    )
   ),
   unique (category_id, slug)
 );
