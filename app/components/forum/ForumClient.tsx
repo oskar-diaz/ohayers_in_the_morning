@@ -3882,6 +3882,7 @@ export default function ForumClient({
     options?: {
       eyebrow?: string;
       previewContent?: string;
+      showCategory?: boolean;
     },
   ) {
     const category = getTopicCategory(topic, categories);
@@ -3899,7 +3900,11 @@ export default function ForumClient({
     const topicLocation = normalizeForumTopicLocation(topic.event_location);
     const isUnreadTopic = isForumTopicUnread(topic, forumTopicReadMarkers);
     const shouldShowTopicMetaRow =
-      Boolean(options?.eyebrow) || isUnreadTopic || topic.is_pinned || topic.is_locked;
+      Boolean(options?.eyebrow) ||
+      Boolean(options?.showCategory && category) ||
+      isUnreadTopic ||
+      topic.is_pinned ||
+      topic.is_locked;
 
     return (
       <article
@@ -3950,6 +3955,9 @@ export default function ForumClient({
               {shouldShowTopicMetaRow && (
                 <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7a746b]">
                   {options?.eyebrow && <span>{options.eyebrow}</span>}
+                  {options?.showCategory && category && (
+                    <span>{category.title}</span>
+                  )}
                   {isUnreadTopic && (
                     <span className="rounded-full border border-red-200 bg-white px-2 py-1 leading-none text-red-700">
                       Nuevo
@@ -4138,7 +4146,11 @@ export default function ForumClient({
         </div>
 
         {unreadTopics.length > 0 ? (
-          unreadTopics.map((topic) => renderTopicListItem(topic))
+          unreadTopics.map((topic) =>
+            renderTopicListItem(topic, {
+              showCategory: true,
+            }),
+          )
         ) : (
           <div className="py-8 text-center text-sm text-[#5f5952]">
             <p>Estás al día. No hay posts nuevos por aquí.</p>
