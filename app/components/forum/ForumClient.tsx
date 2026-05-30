@@ -3827,16 +3827,18 @@ export default function ForumClient({
       ? ` (${unreadTopics.length.toLocaleString("es-ES")})`
       : "";
     const unreadCount = unreadTopics.length;
+    const compactActionClassName =
+      "!px-2 !py-1 !text-[0.52rem] sm:!px-4 sm:!py-2 sm:!text-[0.68rem]";
 
     return (
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex w-full flex-wrap items-center justify-end gap-1 sm:gap-2">
         <button
           type="button"
           onClick={toggleUnreadTopicsView}
           className={
             isUnreadTopicsViewOpen
-              ? "editorial-cta editorial-cta-dark !px-4 !py-2 !text-[0.68rem]"
-              : "editorial-link-button"
+              ? `editorial-cta editorial-cta-dark ${compactActionClassName}`
+              : `editorial-link-button ${compactActionClassName}`
           }
         >
           {isUnreadTopicsViewOpen
@@ -3848,9 +3850,9 @@ export default function ForumClient({
             <button
               type="button"
               disabled={unreadCount === 0}
-              className="editorial-link-button disabled:cursor-not-allowed disabled:opacity-45"
+              className={`editorial-link-button ${compactActionClassName} disabled:cursor-not-allowed disabled:opacity-45`}
             >
-              Marcar todos como leídos
+              Marcar todo como leído
             </button>
           </AlertDialog.Trigger>
           <AlertDialog.Portal>
@@ -3875,7 +3877,7 @@ export default function ForumClient({
                   onClick={() => markForumTopicsRead(unreadTopicScope)}
                   className="editorial-cta editorial-cta-dark"
                 >
-                  Sí, marcar como leídos
+                  Sí, marcar todo como leído
                 </AlertDialog.Action>
               </div>
             </AlertDialog.Content>
@@ -4602,7 +4604,11 @@ export default function ForumClient({
   function renderForumSessionControls() {
     if (!user) {
       return (
-        <button type="button" onClick={login} className="editorial-cta">
+        <button
+          type="button"
+          onClick={login}
+          className="editorial-cta !px-3 !py-1.5 !text-[0.64rem] sm:!px-5 sm:!py-2.5 sm:!text-[0.72rem]"
+        >
           Login con Google
         </button>
       );
@@ -4611,8 +4617,11 @@ export default function ForumClient({
     const displayName = profile?.display_name || getForumUserName(user);
 
     return (
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className="inline-flex min-w-0 items-center gap-2 rounded-full border border-[#d6d1c8] bg-white px-2.5 py-1.5 shadow-[0_4px_14px_rgba(17,17,17,0.04)]">
+      <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-1.5 sm:w-auto sm:justify-start sm:gap-2">
+        <Link
+          href={getForumProfileUrl(user.id)}
+          className="inline-flex min-w-0 items-center gap-2 rounded-full border border-[#d6d1c8] bg-white px-2 py-1 shadow-[0_4px_14px_rgba(17,17,17,0.04)] transition hover:bg-[#f5efe4] sm:px-2.5 sm:py-1.5"
+        >
           <ForumAvatar
             avatarUrl={googleAvatarUrl}
             label={displayName}
@@ -4622,20 +4631,17 @@ export default function ForumClient({
             <span className="block text-[0.58rem] font-black uppercase leading-none tracking-[0.16em] text-red-700">
               Logeado
             </span>
-            <span className="mt-0.5 block max-w-[12rem] truncate text-[0.82rem] font-semibold leading-tight text-[#111111]">
+            <span className="mt-0.5 block max-w-[9.5rem] truncate text-[0.76rem] font-semibold leading-tight text-[#111111] sm:max-w-[12rem] sm:text-[0.82rem]">
               {displayName}
             </span>
           </span>
-        </span>
-
-        <Link href="/forum/profile" className="editorial-link-button">
-          Perfil
         </Link>
+
         <button
           type="button"
           onClick={signOut}
           disabled={isSigningOut}
-          className="editorial-link-button disabled:cursor-not-allowed disabled:opacity-55"
+          className="editorial-link-button !px-3 !py-1.5 !text-[0.6rem] disabled:cursor-not-allowed disabled:opacity-55 sm:!px-4 sm:!py-2 sm:!text-[0.68rem]"
         >
           {isSigningOut ? "..." : "Salir"}
         </button>
@@ -4647,7 +4653,7 @@ export default function ForumClient({
     return (
       <section className="sticky top-0 z-50 border-b border-[#d6d1c8] bg-[#fffdf8]/95 shadow-[0_8px_24px_rgba(17,17,17,0.06)] backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0 sm:w-auto">{renderForumSessionControls()}</div>
+          <div className="w-full min-w-0 sm:w-auto">{renderForumSessionControls()}</div>
           <div className="flex w-full justify-end sm:w-auto">
             {renderUnreadTopicsControls()}
           </div>

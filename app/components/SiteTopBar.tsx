@@ -86,53 +86,23 @@ export default async function SiteTopBar() {
   const featuredAnniversary = anniversaries[0];
 
   return (
-    <div className="relative overflow-hidden md:overflow-visible border-b border-[#d93e3e] bg-[linear-gradient(135deg,#ff7167_0%,#ff5a58_30%,#ff4b4b_56%,#eb4050_78%,#cc3150_100%)]">
+    <div className="relative overflow-hidden border-b border-[#d93e3e] bg-[linear-gradient(135deg,#ff7167_0%,#ff5a58_30%,#ff4b4b_56%,#eb4050_78%,#cc3150_100%)] min-[770px]:overflow-visible">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,224,224,0.34),rgba(255,224,224,0)_34%),radial-gradient(circle_at_bottom_right,rgba(157,18,45,0.3),rgba(157,18,45,0)_42%)]" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0))]" />
 
-      <div className="relative mx-auto max-w-7xl px-4 py-4 text-sm sm:px-6 md:pt-14 md:pb-8">
-        <Link href="/" className="mb-3 block text-center md:hidden">
+      <div className="relative mx-auto max-w-7xl px-4 py-3 text-sm sm:px-6 min-[770px]:pt-14 min-[770px]:pb-8">
+        <Link href="/" className="block text-center min-[770px]:hidden">
           <Image
             src="/logo.png"
             alt="Ohayers in the Morning"
             width={320}
             height={72}
-            className="mx-auto h-auto w-full max-w-[220px] drop-shadow-[0_4px_12px_rgba(90,9,9,0.28)] transition hover:opacity-90"
+            className="mx-auto h-auto w-full max-w-[150px] drop-shadow-[0_4px_12px_rgba(90,9,9,0.28)] transition hover:opacity-90 sm:max-w-[170px]"
             priority
           />
         </Link>
 
-        <div className="grid grid-cols-2 gap-3 md:hidden">
-          <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-center shadow-[0_10px_26px_rgba(17,17,17,0.05)]">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ece8df] text-[#111111]">
-              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
-                <path
-                  d="M7.5 2.75v2.5M16.5 2.75v2.5M4.75 8.25h14.5M6.5 5.25h11a1.75 1.75 0 0 1 1.75 1.75v10.5a1.75 1.75 0 0 1-1.75 1.75h-11a1.75 1.75 0 0 1-1.75-1.75V7A1.75 1.75 0 0 1 6.5 5.25Z"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeWidth="1.7"
-                />
-              </svg>
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <p className="text-[0.78rem] font-semibold text-[#111111] sm:text-sm">
-                {formatTokyoDate()}
-              </p>
-
-              {featuredAnniversary && (
-                <p className="mt-1 truncate text-xs text-[#5f5952]">
-                  {featuredAnniversary}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <Weather />
-        </div>
-
-        <div className="relative hidden md:flex md:min-h-[226px] md:items-center">
+        <div className="relative hidden min-[770px]:flex min-[770px]:min-h-[226px] min-[770px]:items-center">
           <div className="absolute left-1/2 top-[56%] z-20 flex w-full max-w-[310px] -translate-x-1/2 -translate-y-1/2 items-center justify-center">
             <Link href="/" className="block w-full">
               <Image

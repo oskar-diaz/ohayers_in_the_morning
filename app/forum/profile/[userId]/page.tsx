@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import ForumClient from "@/app/components/forum/ForumClient";
+import ForumEditProfileLink from "@/app/components/forum/ForumEditProfileLink";
 import {
   FORUM_SMILIE_MAP,
   FORUM_SMILIE_PATTERN,
@@ -250,9 +251,12 @@ export default async function PublicForumProfilePage({
       <main className="min-h-screen bg-[#f8f6f2]">
         <section className="mx-auto max-w-3xl px-6 py-12">
           <div className="mb-8">
-            <Link href="/forum" className="editorial-link-button">
-              Volver al foro
-            </Link>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Link href="/forum" className="editorial-link-button">
+                Volver al foro
+              </Link>
+              <ForumEditProfileLink userId={userId} />
+            </div>
 
             <div className="mt-6">
               <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-red-700">
@@ -264,8 +268,8 @@ export default async function PublicForumProfilePage({
             </div>
           </div>
 
-        {profile ? (
-          <article className="editorial-card mt-8 rounded-[2rem] px-6 py-7 sm:px-8">
+          {profile ? (
+            <article className="editorial-card mt-8 rounded-[2rem] px-6 py-7 sm:px-8">
             <div className="flex items-center gap-4">
               {profile.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -340,14 +344,14 @@ export default async function PublicForumProfilePage({
                 </p>
               )}
             </div>
-          </article>
-        ) : (
-          <div className="editorial-card mt-8 rounded-[2rem] px-6 py-8 text-center">
-            <p className="text-base leading-7 text-[#5f5952]">
-              No he encontrado este perfil del foro.
-            </p>
-          </div>
-        )}
+            </article>
+          ) : (
+            <div className="editorial-card mt-8 rounded-[2rem] px-6 py-8 text-center">
+              <p className="text-base leading-7 text-[#5f5952]">
+                No he encontrado este perfil del foro.
+              </p>
+            </div>
+          )}
         </section>
       </main>
     </>
