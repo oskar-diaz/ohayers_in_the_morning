@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -16,10 +17,12 @@ import {
   Link as LinkIcon,
   List,
   ListOrdered,
+  MapPin,
   Pencil,
   Plus,
   Quote,
   Redo2,
+  Smile,
   Strikethrough,
   Trash2,
   Underline,
@@ -29,10 +32,12 @@ import { Extension, mergeAttributes, Node } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import {
   ChangeEvent,
   FormEvent,
   startTransition,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -71,7 +76,9 @@ import { supabase } from "@/lib/supabase";
 
 type ForumClientProps = {
   categorySlug?: string;
+  chromeOnly?: boolean;
   initialTopicEventEndDate?: string | null;
+  initialTopicEventLocation?: string | null;
   initialTopicEventStartDate?: string | null;
   profileOnly?: boolean;
   topicSlug?: string;
@@ -164,6 +171,8 @@ const EMPTY_FORUM_TOPIC_METRICS: ForumTopicMetrics = {
   likes: 0,
   views: 0,
 };
+const FORUM_TOPIC_READ_CHANGE_EVENT = "forum-topic-read-change";
+const FORUM_TOPIC_READ_STORAGE_KEY_PREFIX = "forum-topic-read-v1";
 const EMPTY_FORUM_TOPIC_DATE_FORM: ForumTopicDateFormState = {
   enabled: false,
   endDate: "",
@@ -171,6 +180,7 @@ const EMPTY_FORUM_TOPIC_DATE_FORM: ForumTopicDateFormState = {
   startDate: "",
 };
 const FORUM_DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const FORUM_TOPIC_LOCATION_MAX_LENGTH = 120;
 const FORUM_SPANISH_DATE_FORMATTER = new Intl.DateTimeFormat("es-ES", {
   day: "2-digit",
   month: "2-digit",
@@ -186,6 +196,10 @@ function getEmptyForumTopicDateForm() {
   return {
     ...EMPTY_FORUM_TOPIC_DATE_FORM,
   };
+}
+
+function normalizeForumTopicLocation(value?: string | null) {
+  return (value ?? "").replace(/\s+/g, " ").trim();
 }
 
 function getForumLocalDate(value?: string | null) {
@@ -302,6 +316,22 @@ function getForumTopicDatePayload(value: ForumTopicDateFormState) {
     endDate: value.isRange ? endDate : null,
     error: "",
     startDate,
+  };
+}
+
+function getForumTopicLocationPayload(value: string) {
+  const location = normalizeForumTopicLocation(value);
+
+  if (location.length > FORUM_TOPIC_LOCATION_MAX_LENGTH) {
+    return {
+      error: "El lugar no puede pasar de 120 caracteres.",
+      location: null,
+    };
+  }
+
+  return {
+    error: "",
+    location: location || null,
   };
 }
 
@@ -499,6 +529,78 @@ function getForumIndexCategories(categories: ForumCategorySummary[]) {
 
     return firstCategory.title.localeCompare(secondCategory.title, "es");
   });
+}
+
+function getForumTopicReadStorageKey(userId?: string | null) {
+  return `${FORUM_TOPIC_READ_STORAGE_KEY_PREFIX}:${userId ?? "anonymous"}`;
+}
+
+function readForumTopicReadMarkers(storageKey: string) {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(storageKey);
+
+    if (!storedValue) {
+      return {};
+    }
+
+    const parsedValue = JSON.parse(storedValue);
+
+    if (
+      !parsedValue ||
+      typeof parsedValue !== "object" ||
+      Array.isArray(parsedValue)
+    ) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsedValue).filter(
+        (entry): entry is [string, string] =>
+          typeof entry[0] === "string" && typeof entry[1] === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeForumTopicReadMarkers(
+  storageKey: string,
+  markers: Record<string, string>,
+) {
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(markers));
+    window.dispatchEvent(new Event(FORUM_TOPIC_READ_CHANGE_EVENT));
+  } catch {
+    // If localStorage is unavailable, keep the in-memory state for this session.
+  }
+}
+
+function getForumTopicReadValue(topic: ForumTopic) {
+  return topic.last_post_at || topic.updated_at || topic.created_at;
+}
+
+function getForumTopicTime(value?: string | null) {
+  const time = value ? Date.parse(value) : 0;
+
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function isForumTopicUnread(
+  topic: ForumTopic,
+  readMarkers: Record<string, string>,
+) {
+  const readValue = readMarkers[String(topic.id)];
+
+  if (!readValue) {
+    return true;
+  }
+
+  return getForumTopicTime(readValue) < getForumTopicTime(getForumTopicReadValue(topic));
 }
 
 function getPlainExcerpt(value: string) {
@@ -1071,6 +1173,29 @@ function ForumTopicDateFields({
   );
 }
 
+function ForumTopicLocationField({
+  onChange,
+  value,
+}: {
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="block text-xs font-black uppercase tracking-[0.16em] text-[#7a746b]">
+        Lugar
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Shibuya, Tokio"
+        className="editorial-field mt-2"
+        maxLength={FORUM_TOPIC_LOCATION_MAX_LENGTH}
+      />
+    </label>
+  );
+}
+
 function ForumSpanishDatePicker({
   label,
   min,
@@ -1278,6 +1403,35 @@ function ForumTopicCalendarBadge({
   );
 }
 
+function ForumTopicLocationPill({
+  className = "",
+  location,
+  size = "default",
+}: {
+  className?: string;
+  location: string;
+  size?: "compact" | "default";
+}) {
+  const isCompact = size === "compact";
+
+  return (
+    <span
+      className={`inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#d6d1c8] bg-[#fffdf8] font-black leading-none text-[#5f5952] shadow-[0_4px_12px_rgba(17,17,17,0.05)] ${
+        isCompact
+          ? "px-2 py-1 text-[0.68rem]"
+          : "px-3 py-1.5 text-xs"
+      } ${className}`}
+    >
+      <MapPin
+        size={isCompact ? 13 : 15}
+        strokeWidth={2.3}
+        className="shrink-0 text-red-700"
+      />
+      <span className="min-w-0 truncate">{location}</span>
+    </span>
+  );
+}
+
 function SmilieBar({ onPick }: { onPick: (value: string) => void }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -1402,6 +1556,7 @@ function RichTextEditor({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [imageUploadError, setImageUploadError] = useState("");
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isSmiliePickerOpen, setIsSmiliePickerOpen] = useState(false);
   const editor = useEditor(
     {
       content: value || "",
@@ -1587,13 +1742,13 @@ function RichTextEditor({
   }
 
   const toolbarButtonClassName =
-    "flex h-8 w-8 items-center justify-center rounded-full border border-[#d6d1c8] bg-[#fffdf8] text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-40";
+    "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d6d1c8] bg-[#fffdf8] text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-40";
   const activeToolbarButtonClassName =
     "border-red-700 bg-[#fff3ed] text-red-700 shadow-[inset_0_0_0_1px_rgba(185,28,28,0.25)] hover:bg-[#ffe7dc]";
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
         <button
           type="button"
           title="Negrita"
@@ -1673,6 +1828,19 @@ function RichTextEditor({
         </button>
         <button
           type="button"
+          title="Smileis"
+          aria-label="Smileis"
+          aria-expanded={isSmiliePickerOpen}
+          disabled={!editor}
+          onClick={() => setIsSmiliePickerOpen((currentValue) => !currentValue)}
+          className={`${toolbarButtonClassName} ${
+            isSmiliePickerOpen ? activeToolbarButtonClassName : ""
+          }`}
+        >
+          <Smile size={15} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
           title="Lista"
           aria-label="Lista"
           disabled={!editor}
@@ -1707,7 +1875,7 @@ function RichTextEditor({
         >
           <Quote size={15} strokeWidth={2.4} />
         </button>
-        <span className="h-6 w-px bg-[#d6d1c8]" aria-hidden="true" />
+        <span className="h-6 w-px shrink-0 bg-[#d6d1c8]" aria-hidden="true" />
         <button
           type="button"
           title="Alinear izquierda"
@@ -1747,7 +1915,7 @@ function RichTextEditor({
         >
           <AlignRight size={15} strokeWidth={2.4} />
         </button>
-        <span className="h-6 w-px bg-[#d6d1c8]" aria-hidden="true" />
+        <span className="h-6 w-px shrink-0 bg-[#d6d1c8]" aria-hidden="true" />
         <button
           type="button"
           title="Deshacer"
@@ -1770,6 +1938,17 @@ function RichTextEditor({
         </button>
       </div>
 
+      {isSmiliePickerOpen && (
+        <div className="max-h-40 overflow-y-auto rounded-[1rem] border border-[#d6d1c8] bg-[#fffdf8] p-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.4)] sm:max-h-52">
+          <SmilieBar
+            onPick={(smilie) => {
+              insertPlainText(smilie);
+              setIsSmiliePickerOpen(false);
+            }}
+          />
+        </div>
+      )}
+
       <div
         className="editorial-field min-h-[190px] cursor-text overflow-auto text-[1rem] leading-7 [&_.ProseMirror]:min-h-[160px] [&_.ProseMirror]:outline-none [&_.ProseMirror_a]:font-bold [&_.ProseMirror_a]:text-red-700 [&_.ProseMirror_a]:underline [&_.ProseMirror_blockquote]:my-4 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-[#d6d1c8] [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_img]:my-4 [&_.ProseMirror_img]:max-h-[380px] [&_.ProseMirror_img]:w-auto [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:rounded-xl [&_.ProseMirror_img]:border [&_.ProseMirror_img]:border-[#d6d1c8] [&_.ProseMirror_img]:object-contain [&_.ProseMirror_li]:ml-5 [&_.ProseMirror_ol]:my-3 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left [&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0 [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-[#8b8379] [&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.ProseMirror_p]:mb-3 [&_.ProseMirror_ul]:my-3 [&_.ProseMirror_ul]:list-disc"
         onClick={() => editor?.chain().focus().run()}
@@ -1784,15 +1963,15 @@ function RichTextEditor({
           {isUploadingImage ? "Subiendo imagen..." : imageUploadError}
         </p>
       )}
-
-      <SmilieBar onPick={insertPlainText} />
     </div>
   );
 }
 
 export default function ForumClient({
   categorySlug,
+  chromeOnly = false,
   initialTopicEventEndDate = null,
+  initialTopicEventLocation = null,
   initialTopicEventStartDate = null,
   profileOnly = false,
   topicSlug,
@@ -1801,21 +1980,27 @@ export default function ForumClient({
   const lastTrackedCategoryViewRef = useRef<string | null>(null);
   const lastTrackedPostViewsRef = useRef<Set<string>>(new Set());
   const lastTrackedTopicViewRef = useRef<string | null>(null);
+  const replyComposerRef = useRef<HTMLElement | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<ForumProfile | null>(null);
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
     bio: "",
     displayName: "",
   });
+  const [allForumTopics, setAllForumTopics] = useState<ForumTopic[]>([]);
   const [categories, setCategories] = useState<ForumCategorySummary[]>([]);
   const [currentCategory, setCurrentCategory] = useState<ForumCategory | null>(null);
   const [topics, setTopics] = useState<ForumTopic[]>([]);
   const [forumMetrics, setForumMetrics] = useState<Record<string, ForumTopicMetrics>>({});
+  const [forumTopicReadMarkers, setForumTopicReadMarkers] = useState<
+    Record<string, string>
+  >({});
   const [topicPreviews, setTopicPreviews] = useState<Record<number, ForumTopicPreview>>({});
   const [currentTopic, setCurrentTopic] = useState<ForumTopic | null>(null);
   const [posts, setPosts] = useState<ForumPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const [activeAction, setActiveAction] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [noticeMessage, setNoticeMessage] = useState("");
@@ -1824,6 +2009,8 @@ export default function ForumClient({
   const [newTopicDateForm, setNewTopicDateForm] = useState<ForumTopicDateFormState>(
     getEmptyForumTopicDateForm,
   );
+  const [newTopicLocation, setNewTopicLocation] = useState("");
+  const [isUnreadTopicsViewOpen, setIsUnreadTopicsViewOpen] = useState(false);
   const [isTopicComposerOpen, setIsTopicComposerOpen] = useState(false);
   const [isCategoryComposerOpen, setIsCategoryComposerOpen] = useState(false);
   const [newCategoryTitle, setNewCategoryTitle] = useState("");
@@ -1837,9 +2024,14 @@ export default function ForumClient({
   const [editingPostId, setEditingPostId] = useState<number | null>(null);
   const [editingTopicDateForm, setEditingTopicDateForm] =
     useState<ForumTopicDateFormState>(getEmptyForumTopicDateForm);
+  const [editingTopicLocation, setEditingTopicLocation] = useState("");
   const [editingTopicTitle, setEditingTopicTitle] = useState("");
 
   const user = session?.user ?? null;
+  const forumTopicReadStorageKey = useMemo(
+    () => getForumTopicReadStorageKey(user?.id),
+    [user?.id],
+  );
   const isAdmin = Boolean(
     user?.email && ADMIN_EMAILS.has(normalizeEmail(user.email)) && isGoogleUser(user),
   );
@@ -1855,9 +2047,24 @@ export default function ForumClient({
     currentTopic?.event_start_date ?? initialTopicEventStartDate;
   const currentTopicEventEndDate =
     currentTopic?.event_end_date ?? initialTopicEventEndDate;
+  const currentTopicEventLocation = normalizeForumTopicLocation(
+    currentTopic?.event_location ?? initialTopicEventLocation,
+  );
   const currentTopicCalendarDateRange = currentTopic
     ? getForumCalendarDateRange(currentTopicEventStartDate, currentTopicEventEndDate)
     : null;
+  const unreadTopicScope = isCategoryView ? topics : allForumTopics;
+  const unreadTopics = useMemo(
+    () =>
+      unreadTopicScope
+        .filter((topic) => isForumTopicUnread(topic, forumTopicReadMarkers))
+        .sort(
+          (firstTopic, secondTopic) =>
+            getForumTopicTime(getForumTopicReadValue(secondTopic)) -
+            getForumTopicTime(getForumTopicReadValue(firstTopic)),
+        ),
+    [forumTopicReadMarkers, unreadTopicScope],
+  );
 
   function canManageCategory(category: ForumCategory | null | undefined) {
     return Boolean(
@@ -1942,6 +2149,81 @@ export default function ForumClient({
     updateForumMetrics(getForumTopicMetricKey(topicId), metrics);
   }
 
+  const markForumTopicsRead = useCallback(
+    (nextTopics: ForumTopic[]) => {
+      if (nextTopics.length === 0 || typeof window === "undefined") {
+        return;
+      }
+
+      setForumTopicReadMarkers((currentMarkers) => {
+        const nextMarkers = {
+          ...currentMarkers,
+        };
+        let hasChanges = false;
+
+        for (const topic of nextTopics) {
+          const readValue = getForumTopicReadValue(topic);
+
+          if (!readValue) {
+            continue;
+          }
+
+          const key = String(topic.id);
+
+          if (nextMarkers[key] !== readValue) {
+            nextMarkers[key] = readValue;
+            hasChanges = true;
+          }
+        }
+
+        if (!hasChanges) {
+          return currentMarkers;
+        }
+
+        writeForumTopicReadMarkers(forumTopicReadStorageKey, nextMarkers);
+
+        return nextMarkers;
+      });
+    },
+    [forumTopicReadStorageKey],
+  );
+
+  function scrollReplyComposerIntoView() {
+    window.setTimeout(() => {
+      replyComposerRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
+  }
+
+  function toggleUnreadTopicsView() {
+    if (chromeOnly) {
+      router.push("/forum?view=new");
+      return;
+    }
+
+    setIsUnreadTopicsViewOpen((currentValue) => {
+      const nextValue = !currentValue;
+
+      if (
+        typeof window !== "undefined" &&
+        !nextValue &&
+        window.location.pathname === "/forum" &&
+        new URLSearchParams(window.location.search).get("view") === "new"
+      ) {
+        window.history.replaceState(null, "", "/forum");
+      }
+
+      return nextValue;
+    });
+  }
+
+  function startReply(post: ForumPost) {
+    setReplyParent(post);
+    scrollReplyComposerIntoView();
+  }
+
   async function login() {
     rememberAuthReturnTo();
 
@@ -1951,6 +2233,21 @@ export default function ForumClient({
         redirectTo: getCurrentAuthUrl(),
       },
     });
+  }
+
+  async function signOut() {
+    if (isSigningOut) {
+      return;
+    }
+
+    setIsSigningOut(true);
+    const { error } = await supabase.auth.signOut();
+
+    if (!error) {
+      setSession(null);
+    }
+
+    setIsSigningOut(false);
   }
 
   async function ensureForumProfile(targetUser: User) {
@@ -2130,7 +2427,7 @@ export default function ForumClient({
           }),
         supabase
           .from("forum_topics")
-          .select("*, event_start_date, event_end_date, forum_categories(*)")
+          .select("*, event_start_date, event_end_date, event_location, forum_categories(*)")
           .is("hidden_at", null)
           .order("is_pinned", {
             ascending: false,
@@ -2151,6 +2448,7 @@ export default function ForumClient({
 
       const nextCategories = (categoriesResponse.data ?? []) as ForumCategory[];
       const allTopics = (topicsResponse.data ?? []) as ForumTopic[];
+      setAllForumTopics(allTopics);
       const summaries = nextCategories.map((category) => {
         const categoryTopics = allTopics
           .filter((topic) => topic.category_id === category.id)
@@ -2193,6 +2491,7 @@ export default function ForumClient({
       setCurrentCategory(nextCurrentCategory);
 
       if (categorySlug && !nextCurrentCategory) {
+        setAllForumTopics(allTopics);
         setTopics([]);
         setTopicPreviews({});
         setForumMetrics({});
@@ -2205,7 +2504,7 @@ export default function ForumClient({
       if (topicSlug && nextCurrentCategory) {
         const { data: topicRow, error: topicError } = await supabase
           .from("forum_topics")
-          .select("*, event_start_date, event_end_date, forum_categories(*)")
+          .select("*, event_start_date, event_end_date, event_location, forum_categories(*)")
           .eq("category_id", nextCurrentCategory.id)
           .eq("slug", topicSlug)
           .maybeSingle();
@@ -2259,15 +2558,17 @@ export default function ForumClient({
       setTopics(nextTopics);
       setTopicPreviews({});
       setIsLoading(false);
+      const previewTopics = nextCurrentCategory
+        ? nextTopics
+        : allTopics;
+
       void loadForumMetrics([
         ...categoryMetricKeys,
         ...(nextCurrentCategory
           ? nextTopics.map((topic) => getForumTopicMetricKey(topic.id))
-          : summaries.flatMap((category) =>
-              category.latestTopics.map((topic) => getForumTopicMetricKey(topic.id)),
-            )),
+          : allTopics.map((topic) => getForumTopicMetricKey(topic.id))),
       ]);
-      void loadTopicPreviews(nextTopics).catch((error) => {
+      void loadTopicPreviews(previewTopics).catch((error) => {
         console.error("Failed to load forum topic previews", error);
       });
     } catch (error) {
@@ -2308,6 +2609,37 @@ export default function ForumClient({
   }, []);
 
   useEffect(() => {
+    function handleForumTopicReadChange() {
+      setForumTopicReadMarkers(
+        readForumTopicReadMarkers(forumTopicReadStorageKey),
+      );
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (
+        event.key === null ||
+        event.key === forumTopicReadStorageKey
+      ) {
+        handleForumTopicReadChange();
+      }
+    }
+
+    const timeoutId = window.setTimeout(handleForumTopicReadChange, 0);
+
+    window.addEventListener(FORUM_TOPIC_READ_CHANGE_EVENT, handleForumTopicReadChange);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener(
+        FORUM_TOPIC_READ_CHANGE_EVENT,
+        handleForumTopicReadChange,
+      );
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [forumTopicReadStorageKey]);
+
+  useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadForumData();
     }, 0);
@@ -2317,6 +2649,33 @@ export default function ForumClient({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categorySlug, topicSlug]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      if (new URLSearchParams(window.location.search).get("view") === "new") {
+        setIsUnreadTopicsViewOpen(true);
+      }
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTopicView || !currentTopic) {
+      return;
+    }
+
+    const topicToMark = currentTopic;
+    const timeoutId = window.setTimeout(() => {
+      markForumTopicsRead([topicToMark]);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [currentTopic, isTopicView, markForumTopicsRead]);
 
   useEffect(() => {
     if (!isCategoryView || !currentCategory) {
@@ -2579,6 +2938,7 @@ export default function ForumClient({
       categories.find((item) => item.id === categoryId) ??
       (currentCategory as ForumCategorySummary | null);
     const datePayload = getForumTopicDatePayload(newTopicDateForm);
+    const locationPayload = getForumTopicLocationPayload(newTopicLocation);
 
     if (!categoryId || !category) {
       setErrorMessage("Elige una categoría para el post.");
@@ -2592,6 +2952,11 @@ export default function ForumClient({
 
     if (datePayload.error) {
       setErrorMessage(datePayload.error);
+      return;
+    }
+
+    if (locationPayload.error) {
+      setErrorMessage(locationPayload.error);
       return;
     }
 
@@ -2611,6 +2976,7 @@ export default function ForumClient({
           author_name: nextProfile.display_name,
           category_id: categoryId,
           event_end_date: datePayload.endDate,
+          event_location: locationPayload.location,
           event_start_date: datePayload.startDate,
           excerpt: getPlainExcerpt(content),
           slug: topicSlugValue,
@@ -2640,6 +3006,7 @@ export default function ForumClient({
       setNewTopicTitle("");
       setNewTopicContent("");
       setNewTopicDateForm(getEmptyForumTopicDateForm());
+      setNewTopicLocation("");
       setIsTopicComposerOpen(false);
       router.push(`/forum/${category.slug}/${topic.slug}`);
     } catch (error) {
@@ -3108,6 +3475,7 @@ export default function ForumClient({
         setEditingPostId(null);
         setEditingPostContent("");
         setEditingTopicDateForm(getEmptyForumTopicDateForm());
+        setEditingTopicLocation("");
         setEditingTopicTitle("");
       }
 
@@ -3136,6 +3504,11 @@ export default function ForumClient({
         ? getForumTopicDateForm(currentTopic)
         : getEmptyForumTopicDateForm(),
     );
+    setEditingTopicLocation(
+      isTopicOpeningPost(post, depth) && currentTopic
+        ? normalizeForumTopicLocation(currentTopic.event_location)
+        : "",
+    );
   }
 
   async function savePostEdit(post: ForumPost, depth = 0) {
@@ -3153,6 +3526,12 @@ export default function ForumClient({
           error: "",
           startDate: null,
         };
+    const locationPayload = isTopicRootPost
+      ? getForumTopicLocationPayload(editingTopicLocation)
+      : {
+          error: "",
+          location: null,
+        };
 
     if (!hasForumMeaningfulContent(content)) {
       setErrorMessage("El contenido necesita un poco más de texto.");
@@ -3166,6 +3545,11 @@ export default function ForumClient({
 
     if (datePayload.error) {
       setErrorMessage(datePayload.error);
+      return;
+    }
+
+    if (locationPayload.error) {
+      setErrorMessage(locationPayload.error);
       return;
     }
 
@@ -3185,6 +3569,7 @@ export default function ForumClient({
           .from("forum_topics")
           .update({
             event_end_date: datePayload.endDate,
+            event_location: locationPayload.location,
             event_start_date: datePayload.startDate,
             excerpt: getPlainExcerpt(content),
             title,
@@ -3222,6 +3607,7 @@ export default function ForumClient({
       setEditingPostId(null);
       setEditingPostContent("");
       setEditingTopicDateForm(getEmptyForumTopicDateForm());
+      setEditingTopicLocation("");
       setEditingTopicTitle("");
       setNoticeMessage("Cambios guardados.");
       await loadForumData();
@@ -3275,7 +3661,10 @@ export default function ForumClient({
       topic.event_start_date,
       topic.event_end_date,
     );
-    const shouldShowTopicMetaRow = topic.is_pinned || topic.is_locked;
+    const topicLocation = normalizeForumTopicLocation(topic.event_location);
+    const isUnreadTopic = isForumTopicUnread(topic, forumTopicReadMarkers);
+    const shouldShowTopicMetaRow =
+      isUnreadTopic || topic.is_pinned || topic.is_locked;
 
     return (
       <article
@@ -3325,6 +3714,11 @@ export default function ForumClient({
             <div className="min-w-0 flex-1">
               {shouldShowTopicMetaRow && (
                 <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7a746b]">
+                  {isUnreadTopic && (
+                    <span className="rounded-full border border-red-200 bg-white px-2 py-1 leading-none text-red-700">
+                      Nuevo
+                    </span>
+                  )}
                   {topic.is_pinned && <span>Fijado</span>}
                   {topic.is_locked && <span>Cerrado</span>}
                 </div>
@@ -3364,6 +3758,12 @@ export default function ForumClient({
                   <span>
                     {formatForumDate(topic.last_post_at)}
                   </span>
+                  {topicLocation && (
+                    <ForumTopicLocationPill
+                      location={topicLocation}
+                      size="compact"
+                    />
+                  )}
                 </span>
                 <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                   <Eye size={15} strokeWidth={2.2} />
@@ -3422,6 +3822,92 @@ export default function ForumClient({
     );
   }
 
+  function renderUnreadTopicsControls() {
+    const unreadCountLabel = unreadTopics.length > 0
+      ? ` (${unreadTopics.length.toLocaleString("es-ES")})`
+      : "";
+    const unreadCount = unreadTopics.length;
+
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={toggleUnreadTopicsView}
+          className={
+            isUnreadTopicsViewOpen
+              ? "editorial-cta editorial-cta-dark !px-4 !py-2 !text-[0.68rem]"
+              : "editorial-link-button"
+          }
+        >
+          {isUnreadTopicsViewOpen
+            ? "Ver todos"
+            : `Ver posts nuevos${unreadCountLabel}`}
+        </button>
+        <AlertDialog.Root>
+          <AlertDialog.Trigger asChild>
+            <button
+              type="button"
+              disabled={unreadCount === 0}
+              className="editorial-link-button disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              Marcar todos como leídos
+            </button>
+          </AlertDialog.Trigger>
+          <AlertDialog.Portal>
+            <AlertDialog.Overlay className="fixed inset-0 z-[120] bg-black/45 backdrop-blur-[2px]" />
+            <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[130] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[1.75rem] border border-[#d6d1c8] bg-[#fffdf8] px-6 py-6 shadow-[0_24px_60px_rgba(17,17,17,0.22)]">
+              <div className="inline-flex rounded-full border border-red-200 bg-white px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.16em] text-red-700">
+                {unreadCount.toLocaleString("es-ES")} nuevos
+              </div>
+              <AlertDialog.Title className="mt-4 text-2xl font-black newspaper-title leading-tight text-[#111111]">
+                ¿Marcar todo como leído?
+              </AlertDialog.Title>
+              <AlertDialog.Description className="mt-3 text-[0.98rem] leading-7 text-[#4f4a44]">
+                Se marcarán como leídos los posts nuevos de esta vista en este
+                navegador. Si alguien responde después, volverán a aparecer como
+                nuevos.
+              </AlertDialog.Description>
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <AlertDialog.Cancel className="editorial-cta bg-transparent">
+                  Cancelar
+                </AlertDialog.Cancel>
+                <AlertDialog.Action
+                  onClick={() => markForumTopicsRead(unreadTopicScope)}
+                  className="editorial-cta editorial-cta-dark"
+                >
+                  Sí, marcar como leídos
+                </AlertDialog.Action>
+              </div>
+            </AlertDialog.Content>
+          </AlertDialog.Portal>
+        </AlertDialog.Root>
+      </div>
+    );
+  }
+
+  function renderUnreadTopicsSection() {
+    return (
+      <section className="editorial-card rounded-[2rem] px-5 py-4 sm:px-7">
+        <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#d6d1c8] pb-2">
+          <h3 className="text-sm font-black uppercase leading-none tracking-[0.22em] text-red-700">
+            Posts nuevos
+          </h3>
+          <span className="text-xs font-black uppercase tracking-[0.16em] text-[#7a746b]">
+            {unreadTopics.length.toLocaleString("es-ES")}
+          </span>
+        </div>
+
+        {unreadTopics.length > 0 ? (
+          unreadTopics.map((topic) => renderTopicListItem(topic))
+        ) : (
+          <div className="py-8 text-center text-sm text-[#5f5952]">
+            <p>Estás al día. No hay posts nuevos por aquí.</p>
+          </div>
+        )}
+      </section>
+    );
+  }
+
   function renderCategoryListItem(category: ForumCategorySummary) {
     const topicLabel = formatForumCount(category.topicCount, "post", "posts");
     const canManageCurrentCategory = canManageCategory(category);
@@ -3435,24 +3921,38 @@ export default function ForumClient({
         className="editorial-card rounded-[1.6rem] px-5 py-5 transition hover:shadow-[0_16px_34px_rgba(17,17,17,0.08)] sm:px-6"
       >
         <div className="flex items-start justify-between gap-4">
-          <Link href={`/forum/${category.slug}`} className="min-w-0 flex-1">
-            <div className="min-w-0">
-              <div className="flex items-center gap-3">
-                <span
-                  className="h-3 w-3 shrink-0 rounded-full"
-                  style={{ background: category.color }}
-                />
-                <h3 className="text-lg font-black leading-tight text-[#111111]">
-                  {category.title}
-                </h3>
-              </div>
-              {category.description && (
-                <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#5f5952]">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <Link
+                href={`/forum/${category.slug}`}
+                className="min-w-0 hover:opacity-75"
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-full"
+                    style={{ background: category.color }}
+                  />
+                  <h3 className="text-lg font-black leading-tight text-[#111111]">
+                    {category.title}
+                  </h3>
+                </div>
+              </Link>
+
+              <PostShareButtons
+                title={`Foro: ${category.title}`}
+                url={getForumShareUrl(`/forum/${category.slug}`)}
+                className="justify-start md:shrink-0 md:justify-end"
+              />
+            </div>
+
+            {category.description && (
+              <Link href={`/forum/${category.slug}`} className="block min-w-0">
+                <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#5f5952] transition hover:text-[#111111]">
                   {category.description}
                 </p>
-              )}
-            </div>
-          </Link>
+              </Link>
+            )}
+          </div>
 
           <div className="flex shrink-0 items-start gap-2">
             <div className="shrink-0 rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-center">
@@ -3517,13 +4017,33 @@ export default function ForumClient({
                   topic.event_start_date,
                   topic.event_end_date,
                 );
+                const topicLocation = normalizeForumTopicLocation(
+                  topic.event_location,
+                );
+                const thumbnailUrl =
+                  topicPreviews[topic.id]?.thumbnailUrl ?? null;
 
                 return (
                   <Link
                     key={topic.id}
                     href={getTopicUrl(topic, categories)}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-xl px-2 py-1.5 transition hover:bg-[#f5efe4]"
+                    className={`grid items-start gap-3 rounded-xl px-2 py-1.5 transition hover:bg-[#f5efe4] ${
+                      thumbnailUrl
+                        ? "grid-cols-[3.5rem_minmax(0,1fr)_auto]"
+                        : "grid-cols-[minmax(0,1fr)_auto]"
+                    }`}
                   >
+                    {thumbnailUrl ? (
+                      <span className="relative mt-0.5 block h-12 w-14 shrink-0 overflow-hidden rounded-lg border border-[#d6d1c8] bg-[#ece8df]">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={thumbnailUrl}
+                          alt=""
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                      </span>
+                    ) : null}
                     <span className="min-w-0">
                       <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm leading-5 text-[#111111]">
                         <span className="font-bold transition hover:text-red-700">
@@ -3550,6 +4070,12 @@ export default function ForumClient({
                           {topicMetrics.likes.toLocaleString()} likes
                         </span>
                         <span>actualizado {formatForumDate(topic.last_post_at)}</span>
+                        {topicLocation && (
+                          <ForumTopicLocationPill
+                            location={topicLocation}
+                            size="compact"
+                          />
+                        )}
                       </span>
                     </span>
                     {topicDateRange && (
@@ -3566,11 +4092,6 @@ export default function ForumClient({
             </div>
           </div>
         )}
-        <PostShareButtons
-          title={`Foro: ${category.title}`}
-          url={getForumShareUrl(`/forum/${category.slug}`)}
-          className="mt-4"
-        />
       </article>
     );
   }
@@ -3638,6 +4159,11 @@ export default function ForumClient({
               <ForumTopicDateFields
                 value={newTopicDateForm}
                 onChange={setNewTopicDateForm}
+              />
+
+              <ForumTopicLocationField
+                value={newTopicLocation}
+                onChange={setNewTopicLocation}
               />
 
               <RichTextEditor
@@ -3788,7 +4314,7 @@ export default function ForumClient({
               {canReply && (
                 <button
                   type="button"
-                  onClick={() => setReplyParent(post)}
+                  onClick={() => startReply(post)}
                   className="editorial-link-button"
                 >
                   Responder
@@ -3887,6 +4413,11 @@ export default function ForumClient({
                     value={editingTopicDateForm}
                     onChange={setEditingTopicDateForm}
                   />
+
+                  <ForumTopicLocationField
+                    value={editingTopicLocation}
+                    onChange={setEditingTopicLocation}
+                  />
                 </>
               )}
 
@@ -3903,6 +4434,7 @@ export default function ForumClient({
                     setEditingPostId(null);
                     setEditingPostContent("");
                     setEditingTopicDateForm(getEmptyForumTopicDateForm());
+                    setEditingTopicLocation("");
                     setEditingTopicTitle("");
                   }}
                   className="editorial-link-button"
@@ -4039,7 +4571,7 @@ export default function ForumClient({
     return (
       <section className="border-b border-[#d6d1c8] bg-[#fffdf8]">
         <div className="mx-auto max-w-7xl px-6 py-7">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-red-700">
                 Comunidad
@@ -4049,13 +4581,75 @@ export default function ForumClient({
               </h1>
             </div>
 
-            {!user && (
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={login} className="editorial-cta">
-                  Login con Google
-                </button>
+            <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+              <div className="relative hidden h-24 w-44 overflow-hidden rounded-[1.35rem] border border-[#d6d1c8] bg-white shadow-[0_14px_32px_rgba(17,17,17,0.08)] md:block">
+                <Image
+                  src="/daruma-foros-twitter.png"
+                  alt=""
+                  fill
+                  sizes="176px"
+                  className="object-cover"
+                  priority
+                />
               </div>
-            )}
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function renderForumSessionControls() {
+    if (!user) {
+      return (
+        <button type="button" onClick={login} className="editorial-cta">
+          Login con Google
+        </button>
+      );
+    }
+
+    const displayName = profile?.display_name || getForumUserName(user);
+
+    return (
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="inline-flex min-w-0 items-center gap-2 rounded-full border border-[#d6d1c8] bg-white px-2.5 py-1.5 shadow-[0_4px_14px_rgba(17,17,17,0.04)]">
+          <ForumAvatar
+            avatarUrl={googleAvatarUrl}
+            label={displayName}
+            size="sm"
+          />
+          <span className="min-w-0">
+            <span className="block text-[0.58rem] font-black uppercase leading-none tracking-[0.16em] text-red-700">
+              Logeado
+            </span>
+            <span className="mt-0.5 block max-w-[12rem] truncate text-[0.82rem] font-semibold leading-tight text-[#111111]">
+              {displayName}
+            </span>
+          </span>
+        </span>
+
+        <Link href="/forum/profile" className="editorial-link-button">
+          Perfil
+        </Link>
+        <button
+          type="button"
+          onClick={signOut}
+          disabled={isSigningOut}
+          className="editorial-link-button disabled:cursor-not-allowed disabled:opacity-55"
+        >
+          {isSigningOut ? "..." : "Salir"}
+        </button>
+      </div>
+    );
+  }
+
+  function renderForumSubheader() {
+    return (
+      <section className="sticky top-0 z-50 border-b border-[#d6d1c8] bg-[#fffdf8]/95 shadow-[0_8px_24px_rgba(17,17,17,0.06)] backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 sm:w-auto">{renderForumSessionControls()}</div>
+          <div className="flex w-full justify-end sm:w-auto">
+            {renderUnreadTopicsControls()}
           </div>
         </div>
       </section>
@@ -4114,8 +4708,15 @@ export default function ForumClient({
     return (
       <>
         {renderForumHeader()}
+        {renderForumSubheader()}
         {renderStatusMessages()}
-        {renderProfileView()}
+        {isUnreadTopicsViewOpen ? (
+          <main className="mx-auto min-h-[70vh] max-w-7xl px-6 py-12">
+            {renderUnreadTopicsSection()}
+          </main>
+        ) : (
+          renderProfileView()
+        )}
       </>
     );
   }
@@ -4146,9 +4747,19 @@ export default function ForumClient({
       ? getForumEventTopicSections(topics, getForumIsoDate(new Date()))
       : null;
 
+  if (chromeOnly) {
+    return (
+      <>
+        {renderForumHeader()}
+        {renderForumSubheader()}
+      </>
+    );
+  }
+
   return (
     <>
       {renderForumHeader()}
+      {renderForumSubheader()}
       {renderStatusMessages()}
 
       <main
@@ -4165,6 +4776,8 @@ export default function ForumClient({
 
           {isLoading ? (
             null
+          ) : isUnreadTopicsViewOpen ? (
+            renderUnreadTopicsSection()
           ) : isTopicView && currentTopic ? (
             <>
               <div className="mb-8">
@@ -4204,11 +4817,20 @@ export default function ForumClient({
                     </div>
                   </div>
 
-                  {(currentTopicCalendarDateRange || isAdmin) && (
+                  {(currentTopicCalendarDateRange ||
+                    currentTopicEventLocation ||
+                    isAdmin) && (
                     <div className="flex shrink-0 flex-col items-start gap-3 sm:ml-auto sm:items-end">
                       {currentTopicCalendarDateRange && (
                         <ForumTopicCalendarBadge
                           dateRange={currentTopicCalendarDateRange}
+                        />
+                      )}
+
+                      {currentTopicEventLocation && (
+                        <ForumTopicLocationPill
+                          className="sm:max-w-[16rem]"
+                          location={currentTopicEventLocation}
                         />
                       )}
 
@@ -4258,7 +4880,11 @@ export default function ForumClient({
                 {postTree.map((post) => renderPost(post))}
               </div>
 
-              <section className="editorial-card mt-10 rounded-[2rem] px-5 py-6 sm:px-7">
+              <section
+                ref={replyComposerRef}
+                id="forum-reply-composer"
+                className="editorial-card mt-10 scroll-mt-24 rounded-[2rem] px-5 py-6 sm:px-7"
+              >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-xl font-semibold newspaper-title">
@@ -4370,15 +4996,17 @@ export default function ForumClient({
                     />
                   </div>
 
-                  {topics.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={openTopicComposer}
-                      className="editorial-cta editorial-cta-dark self-start !px-4 !py-2 !text-[0.68rem]"
-                    >
-                      Crear post
-                    </button>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    {topics.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={openTopicComposer}
+                        className="editorial-cta editorial-cta-dark self-start !px-4 !py-2 !text-[0.68rem]"
+                      >
+                        Crear post
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -4387,11 +5015,6 @@ export default function ForumClient({
                   </h2>
 
                   <div className="flex flex-wrap gap-2">
-                    <PostShareButtons
-                      title="Foro Ohayers"
-                      url={getForumShareUrl("/forum")}
-                      className="justify-start sm:justify-end"
-                    />
                     {user && !isCategoryComposerOpen && (
                       <button
                         type="button"

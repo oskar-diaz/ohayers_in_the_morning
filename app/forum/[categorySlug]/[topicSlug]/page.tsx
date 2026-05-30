@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase";
 
 type ForumTopicMetadata = {
   event_end_date: string | null;
+  event_location: string | null;
   event_start_date: string | null;
   excerpt: string | null;
   id: number;
@@ -20,6 +21,7 @@ type ForumTopicMetadata = {
 
 type ForumTopicRow = {
   event_end_date?: string | null;
+  event_location?: string | null;
   event_start_date?: string | null;
   excerpt: string | null;
   id: number;
@@ -45,7 +47,7 @@ async function getForumTopicMetadata(categorySlug: string, topicSlug: string) {
   let topicError: { code?: string } | null = null;
   const topicWithDatesResponse = await supabase
     .from("forum_topics")
-    .select("id, title, excerpt, event_start_date, event_end_date")
+    .select("id, title, excerpt, event_start_date, event_end_date, event_location")
     .eq("category_id", category.id)
     .eq("slug", topicSlug)
     .maybeSingle();
@@ -92,6 +94,7 @@ async function getForumTopicMetadata(categorySlug: string, topicSlug: string) {
   return {
     ...topicRow,
     event_end_date: topicRow.event_end_date ?? null,
+    event_location: topicRow.event_location ?? null,
     event_start_date: topicRow.event_start_date ?? null,
     imageUrl,
   } satisfies ForumTopicMetadata;
@@ -135,6 +138,7 @@ export default async function ForumTopicPage({
     <ForumClient
       categorySlug={categorySlug}
       initialTopicEventEndDate={topic?.event_end_date ?? null}
+      initialTopicEventLocation={topic?.event_location ?? null}
       initialTopicEventStartDate={topic?.event_start_date ?? null}
       topicSlug={topicSlug}
     />

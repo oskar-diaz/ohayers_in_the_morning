@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import ForumClient from "@/app/components/forum/ForumClient";
 import {
   FORUM_SMILIE_MAP,
   FORUM_SMILIE_PATTERN,
@@ -243,22 +244,25 @@ export default async function PublicForumProfilePage({
   ]);
 
   return (
-    <main className="min-h-screen bg-[#f8f6f2]">
-      <section className="border-b border-[#d6d1c8] bg-[#fffdf8]">
-        <div className="mx-auto max-w-7xl px-6 py-7">
-          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-red-700">
-            Comunidad
-          </p>
-          <h1 className="mt-2 text-2xl font-black leading-tight sm:text-3xl">
-            Perfil del foro
-          </h1>
-        </div>
-      </section>
+    <>
+      <ForumClient chromeOnly />
 
-      <section className="mx-auto max-w-3xl px-6 py-12">
-        <Link href="/forum" className="editorial-link-button">
-          Volver al foro
-        </Link>
+      <main className="min-h-screen bg-[#f8f6f2]">
+        <section className="mx-auto max-w-3xl px-6 py-12">
+          <div className="mb-8">
+            <Link href="/forum" className="editorial-link-button">
+              Volver al foro
+            </Link>
+
+            <div className="mt-6">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-red-700">
+                Comunidad
+              </p>
+              <h1 className="mt-2 text-2xl font-black leading-tight sm:text-3xl">
+                Perfil del foro
+              </h1>
+            </div>
+          </div>
 
         {profile ? (
           <article className="editorial-card mt-8 rounded-[2rem] px-6 py-7 sm:px-8">
@@ -344,7 +348,8 @@ export default async function PublicForumProfilePage({
             </p>
           </div>
         )}
-      </section>
-    </main>
+        </section>
+      </main>
+    </>
   );
 }

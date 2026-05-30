@@ -315,6 +315,7 @@ export type ForumTopic = {
   excerpt: string | null;
   event_start_date: string | null;
   event_end_date: string | null;
+  event_location: string | null;
   author_id: string;
   author_name: string;
   author_avatar_url: string | null;

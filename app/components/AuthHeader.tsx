@@ -75,6 +75,12 @@ export default function AuthHeader() {
     setIsSigningOut(false);
   }
 
+  const isForumPath = pathname === "/forum" || pathname.startsWith("/forum/");
+
+  if (isForumPath) {
+    return null;
+  }
+
   const user = session?.user;
 
   if (!user) {
@@ -83,7 +89,6 @@ export default function AuthHeader() {
 
   const name = getUserName(user);
   const avatarUrl = getAvatarUrl(user);
-  const isForumPath = pathname === "/forum" || pathname.startsWith("/forum/");
 
   return (
     <header

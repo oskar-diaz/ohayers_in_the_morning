@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import type { SanityImageSource } from "@sanity/image-url";
+import { MapPin } from "lucide-react";
 import { cache } from "react";
 
 import NewsTipCta from "@/app/components/NewsTipCta";
@@ -119,6 +120,7 @@ type HomeForumTopicRow = {
   title: string;
   author_name: string;
   event_end_date?: string | null;
+  event_location?: string | null;
   event_start_date?: string | null;
   reply_count: number;
   last_post_at: string;
@@ -147,6 +149,7 @@ type HomeForumPostPreview = {
   category: HomeForumCategory;
   calendarDateRange: HomeForumCalendarDateRange | null;
   likes: number;
+  location: string | null;
   replyCount: number;
   thumbnailUrl: string | null;
   title: string;
@@ -388,6 +391,7 @@ async function getHomeForumPostPreviews(
           topic.event_end_date,
         ),
         likes: likes[metricKey] ?? 0,
+        location: topic.event_location?.trim() || null,
         replyCount: topic.reply_count,
         thumbnailUrl: thumbnailsByTopic.get(topic.id) ?? null,
         title: topic.title,
@@ -406,7 +410,7 @@ const getLatestForumPosts = cache(async (): Promise<HomeForumPostPreview[]> => {
     const topicsWithDatesResponse = await supabase
       .from("forum_topics")
       .select(
-        "id, slug, title, author_name, event_start_date, event_end_date, reply_count, last_post_at, forum_categories(slug, title, color)",
+        "id, slug, title, author_name, event_start_date, event_end_date, event_location, reply_count, last_post_at, forum_categories(slug, title, color)",
       )
       .is("hidden_at", null)
       .order("last_post_at", {
@@ -456,10 +460,12 @@ const getLatestForumPosts = cache(async (): Promise<HomeForumPostPreview[]> => {
 const getUpcomingForumEvents = cache(async (): Promise<HomeForumPostPreview[]> => {
   try {
     const today = getHomeForumTodayIsoDate();
-    const { data: topicRows, error: topicsError } = await supabase
+    let topicRows: unknown[] | null = null;
+    let topicsError: { code?: string } | null = null;
+    const topicsWithLocationResponse = await supabase
       .from("forum_topics")
       .select(
-        "id, slug, title, author_name, event_start_date, event_end_date, reply_count, last_post_at, forum_categories(slug, title, color)",
+        "id, slug, title, author_name, event_start_date, event_end_date, event_location, reply_count, last_post_at, forum_categories(slug, title, color)",
       )
       .is("hidden_at", null)
       .gte("event_start_date", today)
@@ -468,8 +474,24 @@ const getUpcomingForumEvents = cache(async (): Promise<HomeForumPostPreview[]> =
       })
       .limit(HOME_FORUM_POST_LIMIT);
 
+    topicRows = topicsWithLocationResponse.data;
+    topicsError = topicsWithLocationResponse.error;
+
     if (topicsError?.code === "42703") {
-      return [];
+      const topicsFallbackResponse = await supabase
+        .from("forum_topics")
+        .select(
+          "id, slug, title, author_name, event_start_date, event_end_date, reply_count, last_post_at, forum_categories(slug, title, color)",
+        )
+        .is("hidden_at", null)
+        .gte("event_start_date", today)
+        .order("event_start_date", {
+          ascending: true,
+        })
+        .limit(HOME_FORUM_POST_LIMIT);
+
+      topicRows = topicsFallbackResponse.data;
+      topicsError = topicsFallbackResponse.error;
     }
 
     if (topicsError) {
@@ -551,6 +573,16 @@ function HomeForumPostPreviewLink({ post }: { post: HomeForumPostPreview }) {
         <p className="mt-2 truncate text-xs font-semibold text-[#7a746b]">
           {post.authorName} · {formatForumDate(post.updatedAt)}
         </p>
+        {post.location && (
+          <p className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#d6d1c8] bg-[#fffdf8] px-2.5 py-1 text-[0.68rem] font-black leading-none text-[#5f5952] shadow-[0_4px_12px_rgba(17,17,17,0.05)]">
+            <MapPin
+              size={13}
+              strokeWidth={2.3}
+              className="shrink-0 text-red-700"
+            />
+            <span className="min-w-0 truncate">{post.location}</span>
+          </p>
+        )}
         <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c]">
           <span>
             {post.replyCount === 1

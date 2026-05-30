@@ -50,6 +50,7 @@ create table if not exists public.forum_topics (
   author_avatar_url text,
   event_start_date date,
   event_end_date date,
+  event_location text,
   reply_count integer not null default 0,
   post_count integer not null default 0,
   is_locked boolean not null default false,
@@ -66,6 +67,10 @@ create table if not exists public.forum_topics (
   constraint forum_topics_excerpt_length check (
     excerpt is null or char_length(excerpt) <= 220
   ),
+  constraint forum_topics_event_location_length check (
+    event_location is null
+    or char_length(trim(event_location)) between 1 and 120
+  ),
   constraint forum_topics_event_dates_order check (
     event_end_date is null
     or (
@@ -78,7 +83,8 @@ create table if not exists public.forum_topics (
 
 alter table public.forum_topics
   add column if not exists event_start_date date,
-  add column if not exists event_end_date date;
+  add column if not exists event_end_date date,
+  add column if not exists event_location text;
 
 do $$
 begin
@@ -95,6 +101,22 @@ begin
           event_start_date is not null
           and event_end_date >= event_start_date
         )
+      );
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'forum_topics_event_location_length'
+      and conrelid = 'public.forum_topics'::regclass
+  ) then
+    alter table public.forum_topics
+      add constraint forum_topics_event_location_length check (
+        event_location is null
+        or char_length(trim(event_location)) between 1 and 120
       );
   end if;
 end $$;

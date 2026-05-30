@@ -50,6 +50,7 @@ create table if not exists public.forum_topics (
   author_avatar_url text,
   event_start_date date,
   event_end_date date,
+  event_location text,
   reply_count integer not null default 0,
   post_count integer not null default 0,
   is_locked boolean not null default false,
@@ -65,6 +66,10 @@ create table if not exists public.forum_topics (
   ),
   constraint forum_topics_excerpt_length check (
     excerpt is null or char_length(excerpt) <= 220
+  ),
+  constraint forum_topics_event_location_length check (
+    event_location is null
+    or char_length(trim(event_location)) between 1 and 120
   ),
   constraint forum_topics_event_dates_order check (
     event_end_date is null
