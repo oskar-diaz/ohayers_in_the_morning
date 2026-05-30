@@ -172,9 +172,13 @@ async function getTokyoWeather() {
 
 type WeatherProps = {
   className?: string;
+  variant?: "compact" | "default";
 };
 
-export default async function Weather({ className }: WeatherProps) {
+export default async function Weather({
+  className,
+  variant = "default",
+}: WeatherProps) {
   let data: WeatherResponse | null = null;
 
   try {
@@ -187,6 +191,23 @@ export default async function Weather({ className }: WeatherProps) {
   const daily = data?.daily;
 
   if (!current || !daily) {
+    if (variant === "compact") {
+      return (
+        <div
+          className={`min-w-0 rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-2 py-1.5 text-center shadow-[0_8px_20px_rgba(17,17,17,0.05)] ${
+            className ?? ""
+          }`}
+        >
+          <p className="truncate text-[0.56rem] font-black uppercase tracking-[0.12em] text-[#7a746b]">
+            Tokyo
+          </p>
+          <p className="mt-0.5 truncate text-[0.66rem] font-semibold leading-tight text-[#111111]">
+            Sin datos
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div
         className={`w-full rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-3 py-2 text-right shadow-[0_10px_26px_rgba(17,17,17,0.05)] md:h-[82px] md:w-[350px] ${
@@ -216,6 +237,28 @@ export default async function Weather({ className }: WeatherProps) {
     current.weather_code,
     current.is_day === 1,
   );
+
+  if (variant === "compact") {
+    return (
+      <div
+        className={`min-w-0 rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-2 py-1.5 text-center shadow-[0_8px_20px_rgba(17,17,17,0.05)] ${
+          className ?? ""
+        }`}
+      >
+        <p className="truncate text-[0.56rem] font-black uppercase tracking-[0.12em] text-[#7a746b]">
+          Tokyo
+        </p>
+        <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[#111111]">
+          <span className="shrink-0 [&_svg]:h-3.5 [&_svg]:w-3.5">
+            {descriptor.icon}
+          </span>
+          <span className="truncate text-[0.8rem] font-black leading-none">
+            {Math.round(current.temperature_2m)}°C
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
