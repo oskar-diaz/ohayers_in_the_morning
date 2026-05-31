@@ -123,6 +123,7 @@ type HomeForumTopicRow = {
   event_end_date?: string | null;
   event_location?: string | null;
   event_start_date?: string | null;
+  event_zone?: string | null;
   reply_count: number;
   last_post_at: string;
   forum_categories?: HomeForumCategory | HomeForumCategory[] | null;
@@ -151,12 +152,14 @@ type HomeForumPostPreview = {
   calendarDateRange: HomeForumCalendarDateRange | null;
   likes: number;
   location: string | null;
+  previewText: string;
   replyCount: number;
   thumbnailUrl: string | null;
   title: string;
   updatedAt: string;
   url: string;
   views: number;
+  zone: string | null;
 };
 
 const HOME_FORUM_POST_LIMIT = 7;
@@ -337,6 +340,88 @@ function HomeForumCalendarBadge({
   );
 }
 
+function getHomeForumLocationLines(location: string) {
+  return location
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+const HOME_FORUM_EVENT_ZONES = new Set([
+  "Hokkaido",
+  "Tohoku",
+  "Kanto",
+  "Chubu",
+  "Kansai",
+  "Chugoku",
+  "Shikoku",
+  "Kyushu",
+  "Okinawa",
+]);
+
+function normalizeHomeForumEventZone(value?: string | null) {
+  const zone = value?.trim() ?? "";
+
+  return HOME_FORUM_EVENT_ZONES.has(zone) ? zone : "";
+}
+
+function HomeForumLocationBadge({
+  location,
+  zone,
+}: {
+  location?: string | null;
+  zone?: string | null;
+}) {
+  const locationLines = getHomeForumLocationLines(location ?? "");
+  const normalizedZone = normalizeHomeForumEventZone(zone);
+
+  if (locationLines.length === 0 && !normalizedZone) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-label={`Localización: ${[normalizedZone, ...locationLines].filter(Boolean).join(" ")}`}
+      className="w-[7.75rem] shrink-0 border border-[#d6d1c8] bg-[#fffdf8] px-2.5 py-2 text-center text-[#5f5952] shadow-[4px_4px_0_rgba(17,17,17,0.06)]"
+    >
+      <MapPin
+        size={13}
+        strokeWidth={2.4}
+        className="mx-auto mb-1 text-red-700"
+      />
+      <p className="space-y-0.5 text-[0.58rem] font-black uppercase leading-tight tracking-[0.08em]">
+        {normalizedZone && (
+          <span className="block break-words text-red-700">
+            {normalizedZone}
+          </span>
+        )}
+        {locationLines.map((line, index) => (
+          <span key={`${line}-${index}`} className="block break-words">
+            {line}
+          </span>
+        ))}
+      </p>
+    </div>
+  );
+}
+
+function HomeForumEventMetaStack({ post }: { post: HomeForumPostPreview }) {
+  if (!post.calendarDateRange && !post.location && !post.zone) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-row flex-wrap items-start justify-center gap-2 sm:flex-col sm:items-center">
+      {post.calendarDateRange && (
+        <HomeForumCalendarBadge dateRange={post.calendarDateRange} />
+      )}
+      {(post.location || post.zone) && (
+        <HomeForumLocationBadge location={post.location} zone={post.zone} />
+      )}
+    </div>
+  );
+}
+
 async function getHomeForumPostPreviews(
   topics: HomeForumTopicRow[],
 ): Promise<HomeForumPostPreview[]> {
@@ -360,16 +445,23 @@ async function getHomeForumPostPreviews(
   }
 
   const thumbnailsByTopic = new Map<number, string>();
+  const previewsByTopic = new Map<number, string>();
 
   for (const post of (postRows ?? []) as HomeForumPostContentRow[]) {
-    if (thumbnailsByTopic.has(post.topic_id)) {
-      continue;
+    if (!thumbnailsByTopic.has(post.topic_id)) {
+      const thumbnailUrl = getForumPostShareImageUrl(post.content);
+
+      if (thumbnailUrl) {
+        thumbnailsByTopic.set(post.topic_id, thumbnailUrl);
+      }
     }
 
-    const thumbnailUrl = getForumPostShareImageUrl(post.content);
+    if (!previewsByTopic.has(post.topic_id)) {
+      const previewText = getHomeForumPreviewText(post.content);
 
-    if (thumbnailUrl) {
-      thumbnailsByTopic.set(post.topic_id, thumbnailUrl);
+      if (previewText) {
+        previewsByTopic.set(post.topic_id, previewText);
+      }
     }
   }
 
@@ -398,12 +490,14 @@ async function getHomeForumPostPreviews(
         ),
         likes: likes[metricKey] ?? 0,
         location: topic.event_location?.trim() || null,
+        previewText: previewsByTopic.get(topic.id) ?? "",
         replyCount: topic.reply_count,
         thumbnailUrl: thumbnailsByTopic.get(topic.id) ?? null,
         title: topic.title,
         updatedAt: topic.last_post_at,
         url: `/forum/${category.slug}/${topic.slug}`,
         views: views[metricKey] ?? 0,
+        zone: normalizeHomeForumEventZone(topic.event_zone) || null,
       },
     ];
   });
@@ -416,7 +510,7 @@ const getLatestForumPosts = cache(async (): Promise<HomeForumPostPreview[]> => {
     const topicsWithDatesResponse = await supabase
       .from("forum_topics")
       .select(
-        "id, slug, title, author_name, event_start_date, event_end_date, event_location, reply_count, last_post_at, forum_categories(slug, title, color)",
+        "id, slug, title, author_name, event_start_date, event_end_date, event_location, event_zone, reply_count, last_post_at, forum_categories(slug, title, color)",
       )
       .is("hidden_at", null)
       .order("last_post_at", {
@@ -471,7 +565,7 @@ const getUpcomingForumEvents = cache(async (): Promise<HomeForumPostPreview[]> =
     const topicsWithLocationResponse = await supabase
       .from("forum_topics")
       .select(
-        "id, slug, title, author_name, event_start_date, event_end_date, event_location, reply_count, last_post_at, forum_categories(slug, title, color)",
+        "id, slug, title, author_name, event_start_date, event_end_date, event_location, event_zone, reply_count, last_post_at, forum_categories(slug, title, color)",
       )
       .is("hidden_at", null)
       .or(`event_start_date.gte.${today},event_end_date.gte.${today}`)
@@ -530,13 +624,44 @@ function getCssImageUrl(value: string) {
   return `url("${value.replace(/["\\]/g, "\\$&")}")`;
 }
 
-function HomeForumPostPreviewLink({ post }: { post: HomeForumPostPreview }) {
+function getHomeForumContentText(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|blockquote)>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getHomeForumPreviewText(value: string) {
+  const text = getHomeForumContentText(value);
+
+  return text.length > 150 ? `${text.slice(0, 147).trim()}...` : text;
+}
+
+function HomeForumPostPreviewLink({
+  post,
+  showTextPreview = false,
+  showCategory = true,
+}: {
+  post: HomeForumPostPreview;
+  showTextPreview?: boolean;
+  showCategory?: boolean;
+}) {
+  const locationWithDate = Boolean(post.calendarDateRange);
+
   return (
     <Link
       href={post.url}
       className={`group grid gap-4 border-b border-[#d6d1c8] pb-4 transition last:border-b-0 last:pb-0 ${
         post.calendarDateRange
-          ? "grid-cols-[7.75rem_minmax(0,1fr)] sm:grid-cols-[92px_minmax(0,1fr)_auto]"
+          ? "grid-cols-[92px_minmax(0,1fr)] sm:grid-cols-[92px_minmax(0,1fr)_auto]"
           : "grid-cols-[92px_minmax(0,1fr)]"
       }`}
     >
@@ -564,25 +689,30 @@ function HomeForumPostPreviewLink({ post }: { post: HomeForumPostPreview }) {
             </div>
           )}
         </div>
-
-        {post.calendarDateRange && (
-          <div className="sm:hidden">
-            <HomeForumCalendarBadge dateRange={post.calendarDateRange} />
-          </div>
-        )}
       </div>
 
-      <div className="min-w-0">
-        <p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-red-700">
-          {post.category.title}
-        </p>
-        <h3 className="mt-1 line-clamp-2 text-base font-black leading-tight text-[#111111] transition group-hover:text-red-700">
+      <div className={`min-w-0 ${showTextPreview ? "flex h-full flex-col" : ""}`}>
+        {showCategory && (
+          <p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-red-700">
+            {post.category.title}
+          </p>
+        )}
+        <h3
+          className={`${
+            showCategory ? "mt-1" : ""
+          } line-clamp-2 text-base font-black leading-tight text-[#111111] transition group-hover:text-red-700`}
+        >
           {post.title}
         </h3>
         <p className="mt-2 truncate text-xs font-semibold text-[#7a746b]">
           {post.authorName} · {formatForumDate(post.updatedAt)}
         </p>
-        {post.location && (
+        {showTextPreview && post.previewText && (
+          <p className="mt-2 line-clamp-2 text-sm leading-5 text-[#5f5952]">
+            {post.previewText}
+          </p>
+        )}
+        {post.location && !locationWithDate && (
           <p className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#d6d1c8] bg-[#fffdf8] px-2.5 py-1 text-[0.68rem] font-black leading-none text-[#5f5952] shadow-[0_4px_12px_rgba(17,17,17,0.05)]">
             <MapPin
               size={13}
@@ -592,20 +722,40 @@ function HomeForumPostPreviewLink({ post }: { post: HomeForumPostPreview }) {
             <span className="min-w-0 truncate">{post.location}</span>
           </p>
         )}
-        <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c]">
-          <span>
-            {post.replyCount === 1
-              ? "1 respuesta"
-              : `${post.replyCount.toLocaleString()} respuestas`}
-          </span>
+        <p
+          className={`flex flex-wrap gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c] ${
+            showTextPreview ? "mt-auto pt-2" : "mt-2"
+          }`}
+        >
+          {post.replyCount > 0 && (
+            <span>
+              {post.replyCount === 1
+                ? "1 respuesta"
+                : `${post.replyCount.toLocaleString()} respuestas`}
+            </span>
+          )}
           <span>{post.views.toLocaleString()} vistas</span>
           <span>{post.likes.toLocaleString()} likes</span>
         </p>
       </div>
 
       {post.calendarDateRange && (
+        <div className="col-span-full sm:hidden">
+          {locationWithDate ? (
+            <HomeForumEventMetaStack post={post} />
+          ) : (
+            <HomeForumCalendarBadge dateRange={post.calendarDateRange} />
+          )}
+        </div>
+      )}
+
+      {post.calendarDateRange && (
         <div className="hidden sm:col-start-3 sm:row-start-1 sm:block sm:justify-self-end">
-          <HomeForumCalendarBadge dateRange={post.calendarDateRange} />
+          {locationWithDate ? (
+            <HomeForumEventMetaStack post={post} />
+          ) : (
+            <HomeForumCalendarBadge dateRange={post.calendarDateRange} />
+          )}
         </div>
       )}
     </Link>
@@ -1065,7 +1215,12 @@ export default async function Home() {
 
                 <div className="mt-5 space-y-4">
                   {upcomingForumEvents.map((post) => (
-                    <HomeForumPostPreviewLink key={post.url} post={post} />
+                    <HomeForumPostPreviewLink
+                      key={post.url}
+                      post={post}
+                      showTextPreview
+                      showCategory={false}
+                    />
                   ))}
                 </div>
               </div>

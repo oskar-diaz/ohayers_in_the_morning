@@ -98,7 +98,7 @@ export default function AuthHeader() {
   return (
     <header
       aria-label="Sesion"
-      className="fixed left-2 right-2 top-2 z-[80] flex h-10 max-w-[420px] items-center justify-between gap-2 rounded-full border border-black/10 bg-[#fffdf8]/95 px-2 shadow-[0_10px_28px_rgba(17,17,17,0.14)] backdrop-blur sm:left-4 sm:right-auto sm:w-[min(420px,calc(100vw-2rem))]"
+      className="fixed left-2 right-2 top-[calc(var(--site-ticker-height)+0.5rem)] z-[80] flex h-10 max-w-[420px] items-center justify-between gap-2 rounded-full border border-black/10 bg-[#fffdf8]/95 px-2 shadow-[0_10px_28px_rgba(17,17,17,0.14)] backdrop-blur sm:left-4 sm:right-auto sm:w-[min(420px,calc(100vw-2rem))]"
     >
       <Link
         href={getForumProfileUrl(user.id)}

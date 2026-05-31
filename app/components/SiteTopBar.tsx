@@ -106,102 +106,106 @@ export default async function SiteTopBar() {
   const featuredAnniversary = anniversaries[0];
 
   return (
-    <div className="relative overflow-hidden border-b border-[#d93e3e] bg-[linear-gradient(135deg,#ff7167_0%,#ff5a58_30%,#ff4b4b_56%,#eb4050_78%,#cc3150_100%)] min-[770px]:overflow-visible">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,224,224,0.34),rgba(255,224,224,0)_34%),radial-gradient(circle_at_bottom_right,rgba(157,18,45,0.3),rgba(157,18,45,0)_42%)]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0))]" />
-
-      <div className="relative mx-auto max-w-7xl px-3 py-2 text-sm sm:px-5 min-[770px]:pt-14 min-[770px]:pb-8">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 min-[770px]:hidden">
-          <div className="min-w-0 w-[100px] rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-2 py-1.5 text-center shadow-[0_8px_20px_rgba(17,17,17,0.05)]">
-            <p className="truncate text-[0.56rem] font-black uppercase tracking-[0.12em] text-[#7a746b]">
-              {formatTokyoCompactDate()}
-            </p>
-            <p className="mt-0.5 line-clamp-2 text-[0.62rem] font-semibold leading-[1.05] text-[#111111]">
-              {featuredAnniversary || "Hoy en Tokio"}
-            </p>
-          </div>
-
-          <Link href="/" className="block text-center">
-            <Image
-              src="/logo.png"
-              alt="Ohayers in the Morning"
-              width={320}
-              height={72}
-              className="mx-auto h-auto w-full max-w-[88px] drop-shadow-[0_4px_12px_rgba(90,9,9,0.28)] transition hover:opacity-90 sm:max-w-[104px]"
-              priority
-            />
-          </Link>
-
-          <Weather
-            className="-mr-3 w-[100px] justify-self-end sm:-mr-5"
-            variant="compact"
-          />
-        </div>
-
-        <div className="relative hidden min-[770px]:flex min-[770px]:min-h-[226px] min-[770px]:items-center">
-          <div className="absolute left-1/2 top-[56%] z-20 flex w-full max-w-[310px] -translate-x-1/2 -translate-y-1/2 items-center justify-center">
-            <Link href="/" className="block w-full">
-              <Image
-                src="/logo.png"
-                alt="Ohayers in the Morning"
-                width={420}
-                height={420}
-                className="mx-auto h-auto w-full max-w-[285px] drop-shadow-[0_18px_34px_rgba(90,9,9,0.3)] transition hover:opacity-90"
-                priority
-              />
-            </Link>
-          </div>
-
-          <div className="flex w-full items-center">
-            <div className="flex w-1/2">
-              <div className="flex min-w-0 flex-1 items-center gap-3 rounded-[1.35rem] border border-[#d6d1c8] bg-[#fffdf8] px-5 py-3 pr-24 text-left shadow-[0_14px_32px_rgba(17,17,17,0.06)] md:-mr-14 md:h-[82px]">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ece8df] text-[#111111]">
-                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
-                    <path
-                      d="M7.5 2.75v2.5M16.5 2.75v2.5M4.75 8.25h14.5M6.5 5.25h11a1.75 1.75 0 0 1 1.75 1.75v10.5a1.75 1.75 0 0 1-1.75 1.75h-11a1.75 1.75 0 0 1-1.75-1.75V7A1.75 1.75 0 0 1 6.5 5.25Z"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeWidth="1.7"
-                    />
-                  </svg>
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <p className="text-base font-semibold text-[#111111]">
-                    {formatTokyoDate()}
-                  </p>
-
-                  {featuredAnniversary && (
-                    <p className="mt-1 truncate text-xs text-[#5f5952]">
-                      {featuredAnniversary}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex w-1/2">
-              <Weather className="flex-1 rounded-[1.35rem] px-5 py-3 pl-24 shadow-[0_14px_32px_rgba(17,17,17,0.06)] md:-ml-14 md:!h-[82px] md:!w-full" />
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <>
       <a
         href={TICKER_URL}
         target="_blank"
         rel="noopener noreferrer"
         aria-label={TICKER_MESSAGE}
-        className="relative z-30 block border-t border-[#ffaca1]/70 bg-[#111111] px-4 py-2 text-center text-[#fffdf8] shadow-[0_-8px_24px_rgba(111,16,16,0.18)] transition hover:bg-[#2a2a2a]"
+        className="sticky top-0 z-[90] flex h-[var(--site-ticker-height)] items-center justify-center border-b border-[#ffaca1]/70 bg-[#111111] px-3 text-center text-[#fffdf8] shadow-[0_8px_24px_rgba(111,16,16,0.18)] transition hover:bg-[#2a2a2a]"
       >
-        <span className="text-[0.72rem] font-black uppercase tracking-[0.18em] sm:text-[0.82rem]">
-          {TICKER_MESSAGE}
-        </span>
-        <span className="ml-3 text-[0.72rem] font-black uppercase tracking-[0.18em] text-[#ffd84f] sm:text-[0.82rem]">
-          Ver en Amazon España
+        <span className="inline-flex max-w-7xl flex-wrap items-center justify-center gap-x-3 gap-y-0.5 leading-tight">
+          <span className="text-[0.6rem] font-black uppercase tracking-[0.12em] sm:text-[0.82rem] sm:tracking-[0.18em]">
+            {TICKER_MESSAGE}
+          </span>
+          <span className="text-[0.6rem] font-black uppercase tracking-[0.12em] text-[#ffd84f] sm:text-[0.82rem] sm:tracking-[0.18em]">
+            Ver en Amazon España
+          </span>
         </span>
       </a>
-    </div>
+
+      <div className="relative overflow-hidden border-b border-[#d93e3e] bg-[linear-gradient(135deg,#ff7167_0%,#ff5a58_30%,#ff4b4b_56%,#eb4050_78%,#cc3150_100%)] min-[770px]:overflow-visible">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,224,224,0.34),rgba(255,224,224,0)_34%),radial-gradient(circle_at_bottom_right,rgba(157,18,45,0.3),rgba(157,18,45,0)_42%)]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0))]" />
+
+        <div className="relative mx-auto max-w-7xl px-3 py-2 text-sm sm:px-5 min-[770px]:pt-14 min-[770px]:pb-8">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 min-[770px]:hidden">
+            <div className="min-w-0 w-[100px] rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-2 py-1.5 text-center shadow-[0_8px_20px_rgba(17,17,17,0.05)]">
+              <p className="truncate text-[0.56rem] font-black uppercase tracking-[0.12em] text-[#7a746b]">
+                {formatTokyoCompactDate()}
+              </p>
+              <p className="mt-0.5 line-clamp-2 text-[0.62rem] font-semibold leading-[1.05] text-[#111111]">
+                {featuredAnniversary || "Hoy en Tokio"}
+              </p>
+            </div>
+
+            <Link href="/" className="block text-center">
+              <Image
+                src="/logo.png"
+                alt="Ohayers in the Morning"
+                width={320}
+                height={72}
+                className="mx-auto h-auto w-full max-w-[88px] drop-shadow-[0_4px_12px_rgba(90,9,9,0.28)] transition hover:opacity-90 sm:max-w-[104px]"
+                priority
+              />
+            </Link>
+
+            <Weather
+              className="-mr-3 w-[100px] justify-self-end sm:-mr-5"
+              variant="compact"
+            />
+          </div>
+
+          <div className="relative hidden min-[770px]:flex min-[770px]:min-h-[226px] min-[770px]:items-center">
+            <div className="absolute left-1/2 top-[56%] z-20 flex w-full max-w-[310px] -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+              <Link href="/" className="block w-full">
+                <Image
+                  src="/logo.png"
+                  alt="Ohayers in the Morning"
+                  width={420}
+                  height={420}
+                  className="mx-auto h-auto w-full max-w-[285px] drop-shadow-[0_18px_34px_rgba(90,9,9,0.3)] transition hover:opacity-90"
+                  priority
+                />
+              </Link>
+            </div>
+
+            <div className="flex w-full items-center">
+              <div className="flex w-1/2">
+                <div className="flex min-w-0 flex-1 items-center gap-3 rounded-[1.35rem] border border-[#d6d1c8] bg-[#fffdf8] px-5 py-3 pr-24 text-left shadow-[0_14px_32px_rgba(17,17,17,0.06)] md:-mr-14 md:h-[82px]">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ece8df] text-[#111111]">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
+                      <path
+                        d="M7.5 2.75v2.5M16.5 2.75v2.5M4.75 8.25h14.5M6.5 5.25h11a1.75 1.75 0 0 1 1.75 1.75v10.5a1.75 1.75 0 0 1-1.75 1.75h-11a1.75 1.75 0 0 1-1.75-1.75V7A1.75 1.75 0 0 1 6.5 5.25Z"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeWidth="1.7"
+                      />
+                    </svg>
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-base font-semibold text-[#111111]">
+                      {formatTokyoDate()}
+                    </p>
+
+                    {featuredAnniversary && (
+                      <p className="mt-1 truncate text-xs text-[#5f5952]">
+                        {featuredAnniversary}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex w-1/2">
+                <Weather className="flex-1 rounded-[1.35rem] px-5 py-3 pl-24 shadow-[0_14px_32px_rgba(17,17,17,0.06)] md:-ml-14 md:!h-[82px] md:!w-full" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

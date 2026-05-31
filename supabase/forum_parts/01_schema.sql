@@ -51,6 +51,7 @@ create table if not exists public.forum_topics (
   event_start_date date,
   event_end_date date,
   event_location text,
+  event_zone text,
   reply_count integer not null default 0,
   post_count integer not null default 0,
   is_locked boolean not null default false,
@@ -70,6 +71,20 @@ create table if not exists public.forum_topics (
   constraint forum_topics_event_location_length check (
     event_location is null
     or char_length(trim(event_location)) between 1 and 120
+  ),
+  constraint forum_topics_event_zone_value check (
+    event_zone is null
+    or event_zone in (
+      'Hokkaido',
+      'Tohoku',
+      'Kanto',
+      'Chubu',
+      'Kansai',
+      'Chugoku',
+      'Shikoku',
+      'Kyushu',
+      'Okinawa'
+    )
   ),
   constraint forum_topics_event_dates_order check (
     event_end_date is null
