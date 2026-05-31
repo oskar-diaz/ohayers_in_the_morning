@@ -1,4 +1,5 @@
 import { incrementPendingNewsTips } from "@/lib/news-tips";
+import { isUserEmailConfirmed } from "@/lib/auth-confirmation";
 import { createClient } from "@supabase/supabase-js";
 
 type NewsTipPayload = {
@@ -38,6 +39,27 @@ function getIpAddress(request: Request) {
   }
 
   return request.headers.get("x-real-ip");
+}
+
+function getBearerToken(request: Request) {
+  const authorization = request.headers.get("authorization");
+
+  if (!authorization?.startsWith("Bearer ")) {
+    return null;
+  }
+
+  return authorization.slice("Bearer ".length).trim() || null;
+}
+
+function getUserName(user: { email?: string; user_metadata?: Record<string, unknown> }) {
+  const metadataName =
+    typeof user.user_metadata?.full_name === "string"
+      ? user.user_metadata.full_name
+      : typeof user.user_metadata?.name === "string"
+        ? user.user_metadata.name
+        : "";
+
+  return metadataName.trim() || user.email?.split("@")[0] || "";
 }
 
 export async function POST(request: Request) {
@@ -94,16 +116,41 @@ export async function POST(request: Request) {
   }
 
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const token = getBearerToken(request);
+  const { data: userData } = token
+    ? await supabase.auth.getUser(token)
+    : { data: { user: null } };
+  const user =
+    userData.user && isUserEmailConfirmed(userData.user) ? userData.user : null;
+  const submitterName = user ? getUserName(user) : name;
 
-  const { error } = await supabase.from("news_tips").insert({
-    contact_email: email || null,
+  const tipPayload = {
+    contact_email: user?.email || email || null,
     idea,
     ip_address: getIpAddress(request),
-    name: name || null,
+    name: submitterName || null,
     source_url: sourceUrl || null,
     status: "new",
     user_agent: request.headers.get("user-agent"),
-  });
+    user_id: user?.id ?? null,
+  };
+
+  let { error } = await supabase.from("news_tips").insert(tipPayload);
+
+  if (error?.code === "42703") {
+    const legacyTipPayload = {
+      contact_email: tipPayload.contact_email,
+      idea: tipPayload.idea,
+      ip_address: tipPayload.ip_address,
+      name: tipPayload.name,
+      source_url: tipPayload.source_url,
+      status: tipPayload.status,
+      user_agent: tipPayload.user_agent,
+    };
+    const legacyInsert = await supabase.from("news_tips").insert(legacyTipPayload);
+
+    error = legacyInsert.error;
+  }
 
   if (error) {
     console.error("Failed to store news tip", error);

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 
+import { getConfirmedSession } from "@/lib/auth-confirmation";
 import { supabase } from "@/lib/supabase";
 
 function getUserName(user: User) {
@@ -45,7 +46,7 @@ export default function AuthHeader() {
         return;
       }
 
-      setSession(data.session ?? null);
+      setSession(getConfirmedSession(data.session ?? null));
     });
 
     const {
@@ -55,7 +56,7 @@ export default function AuthHeader() {
         return;
       }
 
-      setSession(nextSession ?? null);
+      setSession(getConfirmedSession(nextSession ?? null));
     });
 
     return () => {

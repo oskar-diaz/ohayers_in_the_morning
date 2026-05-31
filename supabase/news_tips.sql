@@ -7,8 +7,12 @@ create table if not exists public.news_tips (
   source_url text,
   status text not null default 'new',
   ip_address text,
-  user_agent text
+  user_agent text,
+  user_id uuid references auth.users(id) on delete set null
 );
+
+alter table public.news_tips
+add column if not exists user_id uuid references auth.users(id) on delete set null;
 
 alter table public.news_tips enable row level security;
 
@@ -17,7 +21,7 @@ drop policy if exists "Allow anonymous inserts for news tips" on public.news_tip
 create policy "Allow anonymous inserts for news tips"
 on public.news_tips
 for insert
-to anon
+to anon, authenticated
 with check (true);
 
 create index if not exists news_tips_created_at_idx
@@ -25,3 +29,6 @@ on public.news_tips (created_at desc);
 
 create index if not exists news_tips_status_idx
 on public.news_tips (status);
+
+create index if not exists news_tips_user_id_idx
+on public.news_tips (user_id, created_at desc);

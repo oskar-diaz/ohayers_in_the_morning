@@ -41,7 +41,7 @@ with check (
   author_id = auth.uid()
   and sort_order between 0 and 10000
   and char_length(trim(title)) between 2 and 60
-  and (description is null or char_length(description) <= 180)
+  and (description is null or char_length(description) <= 1000)
 );
 
 create policy "Owners and admins update forum categories"
@@ -53,7 +53,7 @@ with check (
   (author_id = auth.uid() or public.forum_is_admin())
   and sort_order between 0 and 10000
   and char_length(trim(title)) between 2 and 60
-  and (description is null or char_length(description) <= 180)
+  and (description is null or char_length(description) <= 1000)
 );
 
 create policy "Owners and admins delete forum categories"

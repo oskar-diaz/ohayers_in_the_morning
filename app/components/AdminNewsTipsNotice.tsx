@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 
 import { isAdminEmail } from "@/lib/admin";
+import { getConfirmedSession } from "@/lib/auth-confirmation";
 import { supabase } from "@/lib/supabase";
 
 const POLL_INTERVAL_IN_MS = 60_000;
@@ -50,7 +51,7 @@ export default function AdminNewsTipsNotice() {
         return;
       }
 
-      setSession(data.session ?? null);
+      setSession(getConfirmedSession(data.session ?? null));
     });
 
     const {
@@ -60,9 +61,11 @@ export default function AdminNewsTipsNotice() {
         return;
       }
 
-      setSession(nextSession ?? null);
+      const confirmedSession = getConfirmedSession(nextSession ?? null);
 
-      if (!nextSession) {
+      setSession(confirmedSession);
+
+      if (!confirmedSession) {
         setIsVisible(false);
         setPendingCount(0);
       }

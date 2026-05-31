@@ -2,6 +2,11 @@
 
 import Image from "next/image";
 import { useEffect, useState, type FormEvent } from "react";
+import type { Session, User } from "@supabase/supabase-js";
+
+import AuthPanel from "@/app/components/AuthPanel";
+import { getConfirmedSession } from "@/lib/auth-confirmation";
+import { supabase } from "@/lib/supabase";
 
 type FormState = {
   email: string;
@@ -18,6 +23,17 @@ const INITIAL_FORM_STATE: FormState = {
   sourceUrl: "",
   website: "",
 };
+
+function getUserName(user: User) {
+  const metadataName =
+    typeof user.user_metadata?.full_name === "string"
+      ? user.user_metadata.full_name
+      : typeof user.user_metadata?.name === "string"
+        ? user.user_metadata.name
+        : "";
+
+  return metadataName.trim() || user.email?.split("@")[0] || "";
+}
 
 export default function NewsTipCta() {
   return <NewsTipCtaContent showFloatingButton={false} showInlineSection />;
@@ -40,6 +56,9 @@ function NewsTipCtaContent({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [formState, setFormState] = useState<FormState>(INITIAL_FORM_STATE);
+  const [session, setSession] = useState<Session | null>(null);
+
+  const user = session?.user ?? null;
 
   useEffect(() => {
     if (!isOpen) {
@@ -63,6 +82,43 @@ function NewsTipCtaContent({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [isOpen]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    function syncSession(nextSession: Session | null) {
+      if (!isActive) {
+        return;
+      }
+
+      const confirmedSession = getConfirmedSession(nextSession);
+
+      setSession(confirmedSession);
+
+      if (confirmedSession?.user) {
+        setFormState((currentValue) => ({
+          ...currentValue,
+          email: currentValue.email || confirmedSession.user.email || "",
+          name: currentValue.name || getUserName(confirmedSession.user),
+        }));
+      }
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      syncSession(data.session ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      syncSession(nextSession ?? null);
+    });
+
+    return () => {
+      isActive = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (!successMessage || closeCountdown === null) {
@@ -127,6 +183,11 @@ function NewsTipCtaContent({
       const response = await fetch("/api/news-tips", {
         method: "POST",
         headers: {
+          ...(session?.access_token
+            ? {
+                Authorization: `Bearer ${session.access_token}`,
+              }
+            : {}),
           "Content-Type": "application/json",
         },
         body: JSON.stringify(formState),
@@ -199,11 +260,11 @@ function NewsTipCtaContent({
 
       {isOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-[rgba(17,17,17,0.52)] p-4 md:items-center"
+          className="fixed inset-0 z-[200] flex items-end justify-center bg-[rgba(17,17,17,0.52)] p-4 md:items-center"
           onClick={closeModal}
         >
           <div
-            className="editorial-card w-full max-w-2xl rounded-[2rem] p-6 md:p-8"
+            className="editorial-card max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-[2rem] p-6 md:max-h-[calc(100vh-4rem)] md:p-8"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
@@ -241,36 +302,57 @@ function NewsTipCtaContent({
               </div>
             </div>
 
-            <form onSubmit={submit} className="mt-6 space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="text-[0.74rem] font-semibold uppercase tracking-[0.14em] text-[#7a746b]">
-                    Nombre
-                  </span>
-                  <input
-                    type="text"
-                    value={formState.name}
-                    onChange={(event) => updateField("name", event.target.value)}
-                    className="editorial-field mt-2"
-                    placeholder="Tu nombre o alias"
-                    maxLength={80}
-                  />
-                </label>
+            <div className="mt-4 rounded-[1.25rem] border border-[#d6d1c8] bg-[#f8f4ed] p-3">
+              {user ? (
+                <p className="text-sm leading-6 text-[#5f5952]">
+                  Enviando como{" "}
+                  <strong className="font-black text-[#111111]">
+                    {getUserName(user) || user.email}
+                  </strong>
+                  .
+                </p>
+              ) : (
+                <AuthPanel
+                  compact
+                  dense
+                  embedded
+                  description="Puedes enviarla como invitado o entrar para asociarla a tu perfil."
+                />
+              )}
+            </div>
 
-                <label className="block">
-                  <span className="text-[0.74rem] font-semibold uppercase tracking-[0.14em] text-[#7a746b]">
-                    Email
-                  </span>
-                  <input
-                    type="email"
-                    value={formState.email}
-                    onChange={(event) => updateField("email", event.target.value)}
-                    className="editorial-field mt-2"
-                    placeholder="Solo si quieres respuesta"
-                    maxLength={160}
-                  />
-                </label>
-              </div>
+            <form onSubmit={submit} className="mt-6 space-y-4">
+              {!user && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="text-[0.74rem] font-semibold uppercase tracking-[0.14em] text-[#7a746b]">
+                      Nombre
+                    </span>
+                    <input
+                      type="text"
+                      value={formState.name}
+                      onChange={(event) => updateField("name", event.target.value)}
+                      className="editorial-field mt-2"
+                      placeholder="Tu nombre o alias"
+                      maxLength={80}
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-[0.74rem] font-semibold uppercase tracking-[0.14em] text-[#7a746b]">
+                      Email
+                    </span>
+                    <input
+                      type="email"
+                      value={formState.email}
+                      onChange={(event) => updateField("email", event.target.value)}
+                      className="editorial-field mt-2"
+                      placeholder="Solo si quieres respuesta"
+                      maxLength={160}
+                    />
+                  </label>
+                </div>
+              )}
 
               <label className="block">
                 <span className="text-[0.74rem] font-semibold uppercase tracking-[0.14em] text-[#7a746b]">

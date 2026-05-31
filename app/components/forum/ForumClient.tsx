@@ -52,9 +52,10 @@ import {
   useLikedPost,
   writeLikedPosts,
 } from "@/app/components/likedPostsStore";
+import AuthPanel from "@/app/components/AuthPanel";
 import PostShareButtons from "@/app/components/PostShareButtons";
 import { ADMIN_EMAILS, normalizeEmail } from "@/lib/admin";
-import { getCurrentAuthUrl, rememberAuthReturnTo } from "@/lib/auth-redirect";
+import { getConfirmedSession } from "@/lib/auth-confirmation";
 import {
   FORUM_SMILIE_MAP,
   FORUM_SMILIE_PATTERN,
@@ -73,7 +74,7 @@ import {
   getForumUserName,
   slugifyForumValue,
 } from "@/lib/forum";
-import { siteUrl } from "@/lib/site";
+import { siteTimeZone, siteUrl } from "@/lib/site";
 import { supabase } from "@/lib/supabase";
 
 type ForumClientProps = {
@@ -114,6 +115,7 @@ type ForumTopicMetrics = {
 type ForumTextAlign = "left" | "center" | "right";
 
 type ProfileFormState = {
+  avatarUrl: string;
   bio: string;
   displayName: string;
 };
@@ -185,6 +187,7 @@ const FORUM_TOPIC_READ_STORAGE_KEY_PREFIX = "forum-topic-read-v1";
 const FORUM_SEARCH_LIMIT = 30;
 const FORUM_SEARCH_POST_LIMIT = 120;
 const FORUM_SEARCH_MIN_LENGTH = 2;
+const FORUM_CATEGORY_DESCRIPTION_MAX_LENGTH = 1000;
 const EMPTY_FORUM_TOPIC_DATE_FORM: ForumTopicDateFormState = {
   enabled: false,
   endDate: "",
@@ -200,9 +203,14 @@ const FORUM_SPANISH_DATE_FORMATTER = new Intl.DateTimeFormat("es-ES", {
 });
 const FORUM_SPANISH_MONTH_FORMATTER = new Intl.DateTimeFormat("es-ES", {
   month: "long",
-  year: "numeric",
 });
 const FORUM_SPANISH_WEEKDAYS = ["L", "M", "X", "J", "V", "S", "D"];
+const FORUM_TOKYO_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: siteTimeZone,
+  year: "numeric",
+});
 
 function getEmptyForumTopicDateForm() {
   return {
@@ -245,8 +253,24 @@ function getForumIsoDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function getForumTokyoTodayIsoDate() {
+  const parts = FORUM_TOKYO_DATE_FORMATTER.formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return year && month && day ? `${year}-${month}-${day}` : getForumIsoDate(new Date());
+}
+
 function getForumDateMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function formatForumCalendarMonth(date: Date) {
+  const month = FORUM_SPANISH_MONTH_FORMATTER.format(date);
+  const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
+
+  return `${capitalizedMonth} ${date.getFullYear()}`;
 }
 
 function addForumDateMonths(date: Date, months: number) {
@@ -443,24 +467,6 @@ function getForumMetricCount(
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function isGoogleUser(user: User | null) {
-  if (!user) {
-    return false;
-  }
-
-  const primaryProvider = user.app_metadata?.provider;
-  const providers = Array.isArray(user.app_metadata?.providers)
-    ? user.app_metadata.providers
-    : [];
-  const identityProviders = Array.isArray(user.identities)
-    ? user.identities
-        .map((identity) => identity.provider)
-        .filter((provider): provider is string => Boolean(provider))
-    : [];
-
-  return [primaryProvider, ...providers, ...identityProviders].includes("google");
-}
-
 function getTopicCategory(
   topic: ForumTopic,
   categories: ForumCategorySummary[],
@@ -502,6 +508,10 @@ function getForumTopicStartDateSortValue(topic: ForumTopic) {
   return topic.event_start_date || "9999-12-31";
 }
 
+function getForumTopicEffectiveEndDate(topic: ForumTopic) {
+  return topic.event_end_date || topic.event_start_date || "";
+}
+
 function sortForumEventTopics(topics: ForumTopic[]) {
   return [...topics].sort((firstTopic, secondTopic) => {
     const firstDate = getForumTopicStartDateSortValue(firstTopic);
@@ -520,10 +530,14 @@ function getForumEventTopicSections(topics: ForumTopic[], todayIsoDate: string) 
 
   return {
     previousTopics: sortedTopics.filter(
-      (topic) => !topic.event_start_date || topic.event_start_date < todayIsoDate,
+      (topic) => !topic.event_start_date || getForumTopicEffectiveEndDate(topic) < todayIsoDate,
     ),
     upcomingTopics: sortedTopics.filter(
-      (topic) => Boolean(topic.event_start_date && topic.event_start_date >= todayIsoDate),
+      (topic) =>
+        Boolean(
+          topic.event_start_date &&
+            getForumTopicEffectiveEndDate(topic) >= todayIsoDate,
+        ),
     ),
   };
 }
@@ -775,6 +789,29 @@ function normalizeForumImageUrl(value: string) {
     return url.toString();
   } catch {
     return "";
+  }
+}
+
+function getForumImageStoragePathFromPublicUrl(value: string, userId: string) {
+  const normalizedValue = normalizeForumImageUrl(value);
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  try {
+    const url = new URL(normalizedValue, "https://forum.local");
+    const prefix = `/storage/v1/object/public/${FORUM_IMAGE_BUCKET}/`;
+
+    if (!url.pathname.startsWith(prefix)) {
+      return null;
+    }
+
+    const storagePath = decodeURIComponent(url.pathname.slice(prefix.length));
+
+    return storagePath.startsWith(`${userId}/`) ? storagePath : null;
+  } catch {
+    return null;
   }
 }
 
@@ -1339,8 +1376,8 @@ function ForumSpanishDatePicker({
             >
               <ChevronLeft size={16} strokeWidth={2.4} />
             </button>
-            <p className="text-sm font-black capitalize">
-              {FORUM_SPANISH_MONTH_FORMATTER.format(visibleMonth)}
+            <p className="text-sm font-black">
+              {formatForumCalendarMonth(visibleMonth)}
             </p>
             <button
               type="button"
@@ -1730,7 +1767,7 @@ function RichTextEditor({
     }
 
     if (!uploadOwnerId) {
-      setImageUploadError("Entra con Google para subir imágenes.");
+      setImageUploadError("Entra con tu cuenta para subir imágenes.");
       return;
     }
 
@@ -2024,7 +2061,7 @@ function RichTextEditor({
       )}
 
       <div
-        className="editorial-field min-h-[190px] cursor-text overflow-auto text-[1rem] leading-7 [&_.ProseMirror]:min-h-[160px] [&_.ProseMirror]:outline-none [&_.ProseMirror_a]:font-bold [&_.ProseMirror_a]:text-red-700 [&_.ProseMirror_a]:underline [&_.ProseMirror_blockquote]:my-4 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-[#d6d1c8] [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_img]:my-4 [&_.ProseMirror_img]:max-h-[380px] [&_.ProseMirror_img]:w-auto [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:rounded-xl [&_.ProseMirror_img]:border [&_.ProseMirror_img]:border-[#d6d1c8] [&_.ProseMirror_img]:object-contain [&_.ProseMirror_li]:ml-5 [&_.ProseMirror_ol]:my-3 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left [&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0 [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-[#8b8379] [&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.ProseMirror_p]:mb-3 [&_.ProseMirror_ul]:my-3 [&_.ProseMirror_ul]:list-disc"
+        className="editorial-field min-h-[190px] cursor-text overflow-auto text-[1rem] leading-7 [&_.ProseMirror]:min-h-[160px] [&_.ProseMirror]:outline-none [&_.ProseMirror_a]:font-bold [&_.ProseMirror_a]:text-red-700 [&_.ProseMirror_a]:underline [&_.ProseMirror_blockquote]:my-4 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-[#d6d1c8] [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_blockquote]:text-[0.9rem] [&_.ProseMirror_blockquote]:leading-6 [&_.ProseMirror_img]:my-4 [&_.ProseMirror_img]:max-h-[380px] [&_.ProseMirror_img]:w-auto [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:rounded-xl [&_.ProseMirror_img]:border [&_.ProseMirror_img]:border-[#d6d1c8] [&_.ProseMirror_img]:object-contain [&_.ProseMirror_li]:ml-5 [&_.ProseMirror_ol]:my-3 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left [&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0 [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-[#8b8379] [&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.ProseMirror_p]:mb-3 [&_.ProseMirror_ul]:my-3 [&_.ProseMirror_ul]:list-disc"
         onClick={() => editor?.chain().focus().run()}
       >
         <EditorContent
@@ -2054,10 +2091,12 @@ export default function ForumClient({
   const lastTrackedCategoryViewRef = useRef<string | null>(null);
   const lastTrackedPostViewsRef = useRef<Set<string>>(new Set());
   const lastTrackedTopicViewRef = useRef<string | null>(null);
+  const profileThumbnailInputRef = useRef<HTMLInputElement | null>(null);
   const replyComposerRef = useRef<HTMLElement | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<ForumProfile | null>(null);
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
+    avatarUrl: "",
     bio: "",
     displayName: "",
   });
@@ -2075,6 +2114,10 @@ export default function ForumClient({
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isRemovingProfileThumbnail, setIsRemovingProfileThumbnail] =
+    useState(false);
+  const [isUploadingProfileThumbnail, setIsUploadingProfileThumbnail] =
+    useState(false);
   const [activeAction, setActiveAction] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [noticeMessage, setNoticeMessage] = useState("");
@@ -2112,13 +2155,11 @@ export default function ForumClient({
     () => getForumTopicReadStorageKey(user?.id),
     [user?.id],
   );
-  const isAdmin = Boolean(
-    user?.email && ADMIN_EMAILS.has(normalizeEmail(user.email)) && isGoogleUser(user),
-  );
+  const isAdmin = Boolean(user?.email && ADMIN_EMAILS.has(normalizeEmail(user.email)));
   const postTree = useMemo(() => buildForumPostTree(posts), [posts]);
   const isTopicView = Boolean(categorySlug && topicSlug);
   const isCategoryView = Boolean(categorySlug && !topicSlug);
-  const googleAvatarUrl = user ? getForumUserAvatarUrl(user) : null;
+  const userAvatarUrl = user ? getForumUserAvatarUrl(user) : null;
   const currentCategorySummary = currentCategory
     ? categories.find((category) => category.id === currentCategory.id) ?? null
     : null;
@@ -2304,17 +2345,6 @@ export default function ForumClient({
     scrollReplyComposerIntoView();
   }
 
-  async function login() {
-    rememberAuthReturnTo();
-
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: getCurrentAuthUrl(),
-      },
-    });
-  }
-
   async function signOut() {
     if (isSigningOut) {
       return;
@@ -2331,7 +2361,7 @@ export default function ForumClient({
   }
 
   async function ensureForumProfile(targetUser: User) {
-    const googleAvatar = getForumUserAvatarUrl(targetUser);
+    const authAvatar = getForumUserAvatarUrl(targetUser);
 
     const { data: existingProfile, error: profileError } = await supabase
       .from("forum_profiles")
@@ -2344,28 +2374,11 @@ export default function ForumClient({
     }
 
     if (existingProfile) {
-      if (existingProfile.avatar_url !== googleAvatar) {
-        const { data: updatedProfile, error: updateError } = await supabase
-          .from("forum_profiles")
-          .update({
-            avatar_url: googleAvatar,
-          })
-          .eq("user_id", targetUser.id)
-          .select("*")
-          .single();
-
-        if (updateError) {
-          throw updateError;
-        }
-
-        return updatedProfile as ForumProfile;
-      }
-
       return existingProfile as ForumProfile;
     }
 
     const fallbackProfile = {
-      avatar_url: googleAvatar,
+      avatar_url: authAvatar,
       bio: null,
       display_name: getForumUserName(targetUser),
       user_id: targetUser.id,
@@ -2391,6 +2404,7 @@ export default function ForumClient({
 
     setProfile(nextProfile);
     setProfileForm({
+      avatarUrl: nextProfile.avatar_url ?? "",
       bio: nextProfile.bio ?? "",
       displayName: nextProfile.display_name,
     });
@@ -2814,7 +2828,7 @@ export default function ForumClient({
         return;
       }
 
-      setSession(data.session ?? null);
+      setSession(getConfirmedSession(data.session ?? null));
     });
 
     const {
@@ -2824,7 +2838,7 @@ export default function ForumClient({
         return;
       }
 
-      setSession(nextSession ?? null);
+      setSession(getConfirmedSession(nextSession ?? null));
     });
 
     return () => {
@@ -3086,6 +3100,7 @@ export default function ForumClient({
       if (!user) {
         setProfile(null);
         setProfileForm({
+          avatarUrl: "",
           bio: "",
           displayName: "",
         });
@@ -3141,11 +3156,6 @@ export default function ForumClient({
   }, [isCategoryComposerOpen]);
 
   function openTopicComposer() {
-    if (!user) {
-      void login();
-      return;
-    }
-
     setIsTopicComposerOpen(true);
   }
 
@@ -3192,7 +3202,7 @@ export default function ForumClient({
 
     try {
       const nextProfile = await ensureForumProfile(user);
-      const nextAvatarUrl = getForumUserAvatarUrl(user);
+      const nextAvatarUrl = nextProfile.avatar_url ?? getForumUserAvatarUrl(user);
       const topicSlugValue = `${slugifyForumValue(title)}-${Date.now().toString(36)}`;
 
       const { data: createdTopic, error: topicError } = await supabase
@@ -3469,8 +3479,9 @@ export default function ForumClient({
       const nextProfile = await ensureForumProfile(user);
       const defaultReplyParent = postTree[0] ?? null;
       const replyTarget = replyParent ?? defaultReplyParent;
+      const nextAvatarUrl = nextProfile.avatar_url ?? getForumUserAvatarUrl(user);
       const { error } = await supabase.from("forum_posts").insert({
-        author_avatar_url: getForumUserAvatarUrl(user),
+        author_avatar_url: nextAvatarUrl,
         author_id: user.id,
         author_name: nextProfile.display_name,
         content,
@@ -3490,6 +3501,133 @@ export default function ForumClient({
       setErrorMessage("No he podido publicar la respuesta.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function uploadProfileThumbnail(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file || !user || isUploadingProfileThumbnail) {
+      return;
+    }
+
+    if (!FORUM_IMAGE_MIME_TYPES.has(file.type)) {
+      setErrorMessage("Solo se permiten imágenes JPG, PNG, WebP o GIF.");
+      return;
+    }
+
+    if (file.size > FORUM_IMAGE_MAX_BYTES) {
+      setErrorMessage("La imagen no puede pasar de 5 MB.");
+      return;
+    }
+
+    setIsUploadingProfileThumbnail(true);
+    setErrorMessage("");
+    setNoticeMessage("");
+
+    try {
+      const imagePath = getForumImagePath(user.id, file);
+      const { error } = await supabase.storage
+        .from(FORUM_IMAGE_BUCKET)
+        .upload(imagePath, file, {
+          cacheControl: "31536000",
+          upsert: false,
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      const { data } = supabase.storage
+        .from(FORUM_IMAGE_BUCKET)
+        .getPublicUrl(imagePath);
+
+      if (!data.publicUrl) {
+        throw new Error("forum_profile_thumbnail_public_url_missing");
+      }
+
+      setProfileForm((currentValue) => ({
+        ...currentValue,
+        avatarUrl: data.publicUrl,
+      }));
+      setNoticeMessage("Thumbnail cargado. Guarda el perfil para aplicarlo.");
+    } catch (error) {
+      console.error("Failed to upload forum profile thumbnail", error);
+      setErrorMessage(
+        "No he podido subir el thumbnail. Revisa el bucket forum-images en Supabase.",
+      );
+    } finally {
+      setIsUploadingProfileThumbnail(false);
+    }
+  }
+
+  async function removeProfileThumbnail() {
+    if (!user || !profileForm.avatarUrl || isRemovingProfileThumbnail) {
+      return;
+    }
+
+    const storagePath = getForumImageStoragePathFromPublicUrl(
+      profileForm.avatarUrl,
+      user.id,
+    );
+
+    setIsRemovingProfileThumbnail(true);
+    setErrorMessage("");
+    setNoticeMessage("");
+
+    try {
+      if (storagePath) {
+        const { error: storageError } = await supabase.storage
+          .from(FORUM_IMAGE_BUCKET)
+          .remove([storagePath]);
+
+        if (storageError) {
+          throw storageError;
+        }
+      }
+
+      const profileMutation = profile
+        ? supabase
+            .from("forum_profiles")
+            .update({
+              avatar_url: null,
+            })
+            .eq("user_id", user.id)
+        : supabase.from("forum_profiles").upsert(
+            {
+              avatar_url: null,
+              bio: null,
+              display_name: getForumUserName(user),
+              user_id: user.id,
+            },
+            {
+              onConflict: "user_id",
+            },
+          );
+
+      const { data, error } = await profileMutation.select("*").single();
+
+      if (error) {
+        throw error;
+      }
+
+      setProfile(data as ForumProfile);
+      setProfileForm((currentValue) => ({
+        ...currentValue,
+        avatarUrl: "",
+      }));
+      setNoticeMessage(
+        storagePath
+          ? "Thumbnail quitado y fichero borrado."
+          : "Thumbnail quitado.",
+      );
+    } catch (error) {
+      console.error("Failed to remove forum profile thumbnail", error);
+      setErrorMessage("No he podido quitar el thumbnail.");
+    } finally {
+      setIsRemovingProfileThumbnail(false);
     }
   }
 
@@ -3516,7 +3654,7 @@ export default function ForumClient({
         .from("forum_profiles")
         .upsert(
           {
-            avatar_url: googleAvatarUrl,
+            avatar_url: profileForm.avatarUrl.trim() || null,
             bio: profileForm.bio.trim() || null,
             display_name: displayName,
             user_id: user.id,
@@ -3850,7 +3988,7 @@ export default function ForumClient({
 
   async function reportPost(post: ForumPost) {
     if (!user) {
-      await login();
+      setErrorMessage("Entra con tu cuenta para reportar posts.");
       return;
     }
 
@@ -4445,14 +4583,10 @@ export default function ForumClient({
         className="editorial-card scroll-mt-24 rounded-[2rem] px-5 py-6 sm:px-7"
       >
         {!user ? (
-          <div className="flex flex-col gap-3">
-            <p className="text-sm leading-6 text-[#5f5952]">
-              Entra con Google para publicar en el foro.
-            </p>
-            <button type="button" onClick={login} className="editorial-cta">
-              Login con Google
-            </button>
-          </div>
+          <AuthPanel
+            embedded
+            description="Entra con tu cuenta para publicar en el foro."
+          />
         ) : (
           <div>
             <div className="flex items-center justify-between gap-3">
@@ -4561,9 +4695,9 @@ export default function ForumClient({
           <textarea
             value={newCategoryDescription}
             onChange={(event) => setNewCategoryDescription(event.target.value)}
-            placeholder="Descripcion breve"
-            className="editorial-field min-h-[110px] resize-y"
-            maxLength={180}
+            placeholder="Descripcion"
+            className="editorial-field min-h-[170px] resize-y"
+            maxLength={FORUM_CATEGORY_DESCRIPTION_MAX_LENGTH}
           />
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[#7a746b]">
@@ -4790,7 +4924,7 @@ export default function ForumClient({
                 </span>
               )}
               <div
-                className="break-words text-[1.03rem] leading-8 text-[#222] [&_a]:font-bold [&_a]:text-red-700 [&_a]:underline [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-[#d6d1c8] [&_blockquote]:pl-4 [&_li]:ml-5 [&_ol]:my-3 [&_ol]:list-decimal [&_p]:mb-3 [&_strong]:font-black [&_ul]:my-3 [&_ul]:list-disc"
+                className="break-words text-[1.03rem] leading-8 text-[#222] [&_a]:font-bold [&_a]:text-red-700 [&_a]:underline [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-[#d6d1c8] [&_blockquote]:pl-4 [&_blockquote]:text-[0.92rem] [&_blockquote]:leading-7 [&_li]:ml-5 [&_ol]:my-3 [&_ol]:list-decimal [&_p]:mb-3 [&_strong]:font-black [&_ul]:my-3 [&_ul]:list-disc"
                 dangerouslySetInnerHTML={{
                   __html: renderForumContentHtml(post.content),
                 }}
@@ -4821,32 +4955,74 @@ export default function ForumClient({
         </div>
 
         {!user ? (
-          <div className="editorial-card rounded-[2rem] px-6 py-8 text-center">
-            <p className="text-lg text-[#4f4a44]">
-              Entra con Google para crear tu perfil.
-            </p>
-            <button type="button" onClick={login} className="editorial-cta mt-6">
-              Login con Google
-            </button>
-          </div>
+          <AuthPanel
+            className="mx-auto max-w-md"
+            description="Entra o crea una cuenta para crear tu perfil."
+          />
         ) : (
           <form
             onSubmit={saveProfile}
             className="editorial-card rounded-[2rem] px-6 py-7 sm:px-8"
           >
-            <div className="flex items-center gap-4">
-              <ForumAvatar
-                avatarUrl={googleAvatarUrl}
-                label={profileForm.displayName || getForumUserName(user)}
-                size="lg"
-              />
-              <div>
-                <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#7a746b]">
-                  Google
-                </p>
-                <p className="mt-1 text-sm text-[#6a645c]">
-                  {user.email}
-                </p>
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-center gap-4">
+                <ForumAvatar
+                  avatarUrl={profileForm.avatarUrl}
+                  label={profileForm.displayName || getForumUserName(user)}
+                  size="lg"
+                />
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#7a746b]">
+                    Cuenta
+                  </p>
+                  <p className="mt-1 text-sm text-[#6a645c]">
+                    {user.email}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                <input
+                  ref={profileThumbnailInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={(event) => void uploadProfileThumbnail(event)}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => profileThumbnailInputRef.current?.click()}
+                  disabled={isUploadingProfileThumbnail || isRemovingProfileThumbnail}
+                  className="editorial-cta !px-4 !py-2 !text-[0.68rem] disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  <ImageIcon size={15} strokeWidth={2.4} />
+                  {isUploadingProfileThumbnail ? "Subiendo..." : "Subir thumbnail"}
+                </button>
+                {userAvatarUrl && profileForm.avatarUrl !== userAvatarUrl && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setProfileForm((currentValue) => ({
+                        ...currentValue,
+                        avatarUrl: userAvatarUrl,
+                      }))
+                    }
+                    className="editorial-link-button"
+                  >
+                    Usar imagen de cuenta
+                  </button>
+                )}
+                {profileForm.avatarUrl && (
+                  <button
+                    type="button"
+                    onClick={() => void removeProfileThumbnail()}
+                    disabled={isRemovingProfileThumbnail || isUploadingProfileThumbnail}
+                    className="editorial-link-button disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    <Trash2 size={14} strokeWidth={2.4} />
+                    {isRemovingProfileThumbnail ? "Quitando..." : "Quitar"}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -4934,17 +5110,17 @@ export default function ForumClient({
   function renderForumSessionControls() {
     if (!user) {
       return (
-        <button
-          type="button"
-          onClick={login}
+        <Link
+          href="/forum/profile"
           className="editorial-cta !h-11 !whitespace-nowrap !px-3 !py-0 !text-[0.64rem] sm:!h-auto sm:!px-5 sm:!py-2.5 sm:!text-[0.72rem]"
         >
-          Login con Google
-        </button>
+          Entrar
+        </Link>
       );
     }
 
     const displayName = profile?.display_name || getForumUserName(user);
+    const sessionAvatarUrl = profile?.avatar_url ?? userAvatarUrl;
 
     return (
       <div className="flex min-w-0 flex-nowrap items-center gap-1.5 sm:w-auto sm:justify-start sm:gap-2">
@@ -4953,7 +5129,7 @@ export default function ForumClient({
           className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-[#d6d1c8] bg-white px-2 py-0 shadow-[0_4px_14px_rgba(17,17,17,0.04)] transition hover:bg-[#f5efe4] sm:h-auto sm:px-2.5 sm:py-1.5"
         >
           <ForumAvatar
-            avatarUrl={googleAvatarUrl}
+            avatarUrl={sessionAvatarUrl}
             label={displayName}
             size="sm"
           />
@@ -4984,6 +5160,28 @@ export default function ForumClient({
     );
   }
 
+  function renderForumAdminControls() {
+    if (!isAdmin) {
+      return null;
+    }
+
+    return (
+      <div className="border-t border-[#d6d1c8] bg-[#f5efe4]/80">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 overflow-x-auto px-3 py-2 sm:px-6">
+          <span className="shrink-0 text-[0.58rem] font-black uppercase tracking-[0.16em] text-red-700">
+            Admin
+          </span>
+          <Link
+            href="/forum/users"
+            className="inline-flex h-9 shrink-0 items-center rounded-full border border-[#d6d1c8] bg-white px-3 py-0 text-[0.62rem] font-black uppercase tracking-[0.14em] text-[#111111] shadow-[0_4px_14px_rgba(17,17,17,0.04)] transition hover:bg-[#fffdf8]"
+          >
+            Usuarios
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   function renderForumSubheader() {
     return (
       <section className="sticky top-0 z-50 border-b border-[#d6d1c8] bg-[#fffdf8]/95 shadow-[0_8px_24px_rgba(17,17,17,0.06)] backdrop-blur">
@@ -4994,6 +5192,7 @@ export default function ForumClient({
           </div>
           <div className="justify-self-end">{renderForumLogoutButton()}</div>
         </div>
+        {renderForumAdminControls()}
       </section>
     );
   }
@@ -5086,7 +5285,7 @@ export default function ForumClient({
 
   const currentForumEventTopicSections =
     isCategoryView && isForumEventsCategory(currentCategory)
-      ? getForumEventTopicSections(topics, getForumIsoDate(new Date()))
+      ? getForumEventTopicSections(topics, getForumTokyoTodayIsoDate())
       : null;
   const hasActiveForumSearch = hasForumSearched || isForumSearching;
 
@@ -5243,7 +5442,7 @@ export default function ForumClient({
                     <p className="mt-2 text-sm text-[#6a645c]">
                       {user
                         ? `Escribiendo como ${profile?.display_name ?? getForumUserName(user)}`
-                        : "Entra con Google para escribir una respuesta."}
+                        : "Entra con tu cuenta para escribir una respuesta."}
                     </p>
                   </div>
 
@@ -5259,9 +5458,12 @@ export default function ForumClient({
                 </div>
 
                 {!user ? (
-                  <button type="button" onClick={login} className="editorial-cta mt-5">
-                    Login con Google
-                  </button>
+                  <AuthPanel
+                    compact
+                    embedded
+                    className="mt-5 max-w-md"
+                    description="Entra con tu cuenta para escribir una respuesta."
+                  />
                 ) : currentTopic.is_locked && !isAdmin ? (
                   <p className="mt-5 text-sm text-[#6a645c]">
                     Este post está cerrado a nuevas respuestas.
@@ -5382,8 +5584,8 @@ export default function ForumClient({
                 currentForumEventTopicSections ? (
                   <div className="space-y-8">
                     {renderEventTopicListSection({
-                      emptyMessage: "No hay próximos eventos.",
-                      title: "Próximos eventos",
+                      emptyMessage: "No hay eventos actuales o próximos.",
+                      title: "Eventos actuales y próximos",
                       topics: currentForumEventTopicSections.upcomingTopics,
                     })}
                     {renderEventTopicListSection({
@@ -5428,13 +5630,12 @@ export default function ForumClient({
                           Añadir categoría
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={login}
+                        <Link
+                          href="/forum/profile"
                           className="editorial-cta mt-5"
                         >
-                          Login con Google
-                        </button>
+                          Entrar
+                        </Link>
                       )}
                     </div>
                   )}

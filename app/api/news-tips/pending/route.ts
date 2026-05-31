@@ -2,6 +2,7 @@ import {
   getPendingNewsTipsCount,
   resetPendingNewsTips,
 } from "@/lib/news-tips";
+import { isUserEmailConfirmed } from "@/lib/auth-confirmation";
 import { isAdminEmail } from "@/lib/admin";
 import { createClient } from "@supabase/supabase-js";
 
@@ -35,7 +36,12 @@ async function requireAdmin(request: Request) {
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
   const { data, error } = await supabase.auth.getUser(token);
 
-  if (error || !isAdminEmail(data.user?.email)) {
+  if (
+    error ||
+    !data.user ||
+    !isUserEmailConfirmed(data.user) ||
+    !isAdminEmail(data.user.email)
+  ) {
     return Response.json({ error: "No autorizado." }, { status: 403 });
   }
 

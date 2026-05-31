@@ -4,8 +4,9 @@ import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 
+import AuthPanel from "@/app/components/AuthPanel";
 import { ADMIN_EMAILS, normalizeEmail } from "@/lib/admin";
-import { getCurrentAuthUrl, rememberAuthReturnTo } from "@/lib/auth-redirect";
+import { getConfirmedSession } from "@/lib/auth-confirmation";
 import {
   FORUM_SMILIE_MAP,
   FORUM_SMILIE_PATTERN,
@@ -196,31 +197,12 @@ export default function Comments({ slug }: { slug: string }) {
   const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  function isGoogleUser() {
-    if (!user) {
-      return false;
-    }
-
-    const primaryProvider = user.app_metadata?.provider;
-    const providers = Array.isArray(user.app_metadata?.providers)
-      ? user.app_metadata.providers
-      : [];
-    const identityProviders = Array.isArray(user.identities)
-      ? user.identities
-          .map((identity) => identity.provider)
-          .filter((provider): provider is string => Boolean(provider))
-      : [];
-
-    return [primaryProvider, ...providers, ...identityProviders].includes("google");
-  }
-
-  function isGoogleAdmin() {
+  function isAdmin() {
     const normalizedUserEmail = normalizeEmail(user?.email);
 
     return Boolean(
       normalizedUserEmail &&
-        ADMIN_EMAILS.has(normalizedUserEmail) &&
-        isGoogleUser(),
+        ADMIN_EMAILS.has(normalizedUserEmail),
     );
   }
 
@@ -279,13 +261,13 @@ export default function Comments({ slug }: { slug: string }) {
         return;
       }
 
-      setUser(data.session?.user || null);
+      setUser(getConfirmedSession(data.session ?? null)?.user ?? null);
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (isActive) {
-          setUser(session?.user || null);
+          setUser(getConfirmedSession(session ?? null)?.user ?? null);
         }
       },
     );
@@ -305,17 +287,6 @@ export default function Comments({ slug }: { slug: string }) {
       window.clearInterval(intervalId);
     };
   }, []);
-
-  async function login() {
-    rememberAuthReturnTo();
-
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: getCurrentAuthUrl(),
-      },
-    });
-  }
 
   async function logout() {
     await supabase.auth.signOut();
@@ -447,11 +418,11 @@ export default function Comments({ slug }: { slug: string }) {
   }
 
   function canDeleteComment(comment: CommentRecord) {
-    if (!user?.email || !isGoogleUser()) {
+    if (!user?.email) {
       return false;
     }
 
-    if (isGoogleAdmin()) {
+    if (isAdmin()) {
       return true;
     }
 
@@ -459,7 +430,7 @@ export default function Comments({ slug }: { slug: string }) {
   }
 
   function canEditComment(comment: CommentRecord) {
-    if (isGoogleAdmin()) {
+    if (isAdmin()) {
       return true;
     }
 
@@ -675,40 +646,17 @@ export default function Comments({ slug }: { slug: string }) {
             <p className="mt-2 text-sm text-[#6a645c]">
               {user
                 ? `Comentando como ${currentUserName}`
-                : "Puedes comentar con tu email o entrar con Google."}
+                : "Puedes comentar con tu email o entrar con tu cuenta."}
             </p>
           </div>
 
           {!user ? (
-            <button
-              type="button"
-              onClick={login}
-              className="editorial-cta gap-3"
-            >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                className="h-5 w-5 shrink-0"
-              >
-                <path
-                  d="M21.8 12.23c0-.68-.06-1.33-.17-1.95H12v3.69h5.5a4.7 4.7 0 0 1-2.04 3.09v2.57h3.3c1.93-1.78 3.04-4.4 3.04-7.4Z"
-                  fill="#4285F4"
-                />
-                <path
-                  d="M12 22c2.76 0 5.08-.91 6.77-2.47l-3.3-2.57c-.91.61-2.08.98-3.47.98-2.67 0-4.93-1.8-5.74-4.23H2.85v2.66A10 10 0 0 0 12 22Z"
-                  fill="#34A853"
-                />
-                <path
-                  d="M6.26 13.71A5.97 5.97 0 0 1 5.94 12c0-.59.1-1.15.32-1.71V7.63H2.85A10 10 0 0 0 2 12c0 1.61.38 3.13 1.05 4.37l3.21-2.66Z"
-                  fill="#FBBC05"
-                />
-                <path
-                  d="M12 6.06c1.5 0 2.85.52 3.91 1.53l2.93-2.93C17.07 2.99 14.75 2 12 2A10 10 0 0 0 2.85 7.63l3.41 2.66c.81-2.43 3.07-4.23 5.74-4.23Z"
-                  fill="#EA4335"
-                />
-              </svg>
-              <span className="translate-y-[1px]">Login con Google</span>
-            </button>
+            <AuthPanel
+              compact
+              embedded
+              className="w-full sm:max-w-sm"
+              description="Entra con tu cuenta para comentar como usuario, o escribe tu email para comentar como invitado."
+            />
           ) : (
             <button
               type="button"

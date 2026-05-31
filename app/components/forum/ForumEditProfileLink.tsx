@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 
+import { getConfirmedSession } from "@/lib/auth-confirmation";
 import { supabase } from "@/lib/supabase";
 
 type ForumEditProfileLinkProps = {
@@ -23,7 +24,7 @@ export default function ForumEditProfileLink({
         return;
       }
 
-      setIsOwnProfile(session?.user.id === userId);
+      setIsOwnProfile(getConfirmedSession(session)?.user.id === userId);
     }
 
     supabase.auth.getSession().then(({ data }) => {

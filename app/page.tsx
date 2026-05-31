@@ -25,6 +25,7 @@ import {
   siteKeywords,
   siteLocale,
   siteName,
+  siteTimeZone,
 } from "@/lib/site";
 import { supabase } from "@/lib/supabase";
 import { getViewsBySlug } from "@/lib/views";
@@ -217,12 +218,17 @@ function isHomeForumEventsCategory(category: HomeForumCategory) {
 }
 
 function getHomeForumTodayIsoDate() {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = `${today.getMonth() + 1}`.padStart(2, "0");
-  const day = `${today.getDate()}`.padStart(2, "0");
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: siteTimeZone,
+    year: "numeric",
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
 
-  return `${year}-${month}-${day}`;
+  return year && month && day ? `${year}-${month}-${day}` : "";
 }
 
 function getHomeForumCalendarDatePart(
@@ -468,7 +474,7 @@ const getUpcomingForumEvents = cache(async (): Promise<HomeForumPostPreview[]> =
         "id, slug, title, author_name, event_start_date, event_end_date, event_location, reply_count, last_post_at, forum_categories(slug, title, color)",
       )
       .is("hidden_at", null)
-      .gte("event_start_date", today)
+      .or(`event_start_date.gte.${today},event_end_date.gte.${today}`)
       .order("event_start_date", {
         ascending: true,
       })
@@ -484,7 +490,7 @@ const getUpcomingForumEvents = cache(async (): Promise<HomeForumPostPreview[]> =
           "id, slug, title, author_name, event_start_date, event_end_date, reply_count, last_post_at, forum_categories(slug, title, color)",
         )
         .is("hidden_at", null)
-        .gte("event_start_date", today)
+        .or(`event_start_date.gte.${today},event_end_date.gte.${today}`)
         .order("event_start_date", {
           ascending: true,
         })
@@ -498,8 +504,11 @@ const getUpcomingForumEvents = cache(async (): Promise<HomeForumPostPreview[]> =
       throw topicsError;
     }
 
-    const topics = ((topicRows ?? []) as HomeForumTopicRow[]).filter((topic) =>
-      Boolean(getHomeForumCategory(topic)),
+    const topics = ((topicRows ?? []) as HomeForumTopicRow[]).filter(
+      (topic) =>
+        Boolean(getHomeForumCategory(topic)) &&
+        Boolean(topic.event_start_date) &&
+        (topic.event_end_date || topic.event_start_date || "") >= today,
     );
 
     return getHomeForumPostPreviews(topics);
