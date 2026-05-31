@@ -1,11 +1,16 @@
 "use client";
 
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 
 import { ADMIN_EMAILS, normalizeEmail } from "@/lib/admin";
 import { getCurrentAuthUrl, rememberAuthReturnTo } from "@/lib/auth-redirect";
+import {
+  FORUM_SMILIE_MAP,
+  FORUM_SMILIE_PATTERN,
+  FORUM_SMILIES,
+} from "@/lib/forum";
 import { supabase } from "@/lib/supabase";
 
 const EDIT_WINDOW_IN_MS = 15 * 60 * 1000;
@@ -98,6 +103,82 @@ function formatCommentTimestamp(createdAt: string) {
   }).format(date);
 }
 
+function escapeCommentHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function escapeCommentAttribute(value: string) {
+  return escapeCommentHtml(value).replace(/`/g, "&#096;");
+}
+
+function renderCommentSmiliesToHtml(value: string) {
+  return value
+    .split(FORUM_SMILIE_PATTERN)
+    .map((part) => {
+      const smilie = FORUM_SMILIE_MAP[part];
+
+      if (smilie) {
+        if (smilie.src) {
+          return `<img src="${escapeCommentAttribute(
+            smilie.src,
+          )}" alt="${escapeCommentAttribute(
+            smilie.label,
+          )}" title="${escapeCommentAttribute(
+            part,
+          )}" class="forum-smilie inline-block h-auto w-auto -translate-y-[2px] object-contain" />`;
+        }
+
+        return `<span class="inline-block -translate-y-px font-mono text-[0.92em]" aria-label="${escapeCommentAttribute(
+          part,
+        )}">${escapeCommentHtml(smilie.value)}</span>`;
+      }
+
+      return escapeCommentHtml(part);
+    })
+    .join("");
+}
+
+function CommentSmilieBar({ onPick }: { onPick: (value: string) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      {FORUM_SMILIES.map((smilie, index) =>
+        smilie.type === "break" ? (
+          <span
+            key={`break-${index}`}
+            className="h-0 basis-full"
+            aria-hidden="true"
+          />
+        ) : (
+          <button
+            key={`${smilie.token}-${index}`}
+            type="button"
+            title={smilie.label}
+            aria-label={`Añadir ${smilie.label}`}
+            onClick={() => onPick(smilie.token)}
+            className="inline-flex min-h-7 items-center justify-center border-0 bg-transparent p-0.5 text-left font-mono text-xs leading-none text-[#5f5952] transition hover:-translate-y-px hover:opacity-75"
+          >
+            {smilie.src ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={smilie.src}
+                alt={smilie.label}
+                className="h-auto w-auto object-contain"
+              />
+            ) : (
+              smilie.value
+            )}
+          </button>
+        ),
+      )}
+    </div>
+  );
+}
+
 export default function Comments({ slug }: { slug: string }) {
   const [comments, setComments] = useState<CommentRecord[]>([]);
   const [user, setUser] = useState<User | null>(null);
@@ -113,6 +194,7 @@ export default function Comments({ slug }: { slug: string }) {
     useState<CommentRecord | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   function isGoogleUser() {
     if (!user) {
@@ -272,6 +354,27 @@ export default function Comments({ slug }: { slug: string }) {
   function cancelEdit() {
     setEditingComment(null);
     setText("");
+  }
+
+  function insertCommentSmilie(token: string) {
+    const textarea = textareaRef.current;
+
+    if (!textarea) {
+      setText((currentText) => `${currentText}${token}`);
+      return;
+    }
+
+    const start = textarea.selectionStart ?? text.length;
+    const end = textarea.selectionEnd ?? text.length;
+    const nextText = `${text.slice(0, start)}${token}${text.slice(end)}`;
+    const nextCursorPosition = start + token.length;
+
+    setText(nextText);
+
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(nextCursorPosition, nextCursorPosition);
+    });
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -468,9 +571,12 @@ export default function Comments({ slug }: { slug: string }) {
             </div>
           </div>
 
-          <p className="mt-5 text-[1.03rem] leading-8 text-[#222] whitespace-pre-wrap">
-            {comment.content}
-          </p>
+          <p
+            className="mt-5 text-[1.03rem] leading-8 text-[#222] whitespace-pre-wrap"
+            dangerouslySetInnerHTML={{
+              __html: renderCommentSmiliesToHtml(comment.content),
+            }}
+          />
 
           {comment.replies.length > 0 && (
             <div className="mt-6">
@@ -660,6 +766,7 @@ export default function Comments({ slug }: { slug: string }) {
           )}
 
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
             placeholder={
@@ -672,6 +779,10 @@ export default function Comments({ slug }: { slug: string }) {
             className="editorial-field min-h-[160px] resize-y"
             required
           />
+
+          <div className="mt-3 max-h-40 overflow-y-auto rounded-[1rem] border border-[#d6d1c8] bg-[#fffdf8] p-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.4)] sm:max-h-52">
+            <CommentSmilieBar onPick={insertCommentSmilie} />
+          </div>
 
           {errorMessage && (
             <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
