@@ -163,6 +163,7 @@ type HomeForumPostPreview = {
 };
 
 const HOME_FORUM_POST_LIMIT = 7;
+const HOME_UPCOMING_FORUM_EVENT_LIMIT = 5;
 const HOME_FORUM_TOPIC_LOOKAHEAD_LIMIT = 40;
 
 const getPosts = cache(async () => {
@@ -572,7 +573,7 @@ const getUpcomingForumEvents = cache(async (): Promise<HomeForumPostPreview[]> =
       .order("event_start_date", {
         ascending: true,
       })
-      .limit(HOME_FORUM_POST_LIMIT);
+      .limit(HOME_UPCOMING_FORUM_EVENT_LIMIT);
 
     topicRows = topicsWithLocationResponse.data;
     topicsError = topicsWithLocationResponse.error;
@@ -588,7 +589,7 @@ const getUpcomingForumEvents = cache(async (): Promise<HomeForumPostPreview[]> =
         .order("event_start_date", {
           ascending: true,
         })
-        .limit(HOME_FORUM_POST_LIMIT);
+        .limit(HOME_UPCOMING_FORUM_EVENT_LIMIT);
 
       topicRows = topicsFallbackResponse.data;
       topicsError = topicsFallbackResponse.error;
