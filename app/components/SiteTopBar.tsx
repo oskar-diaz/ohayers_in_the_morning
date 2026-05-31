@@ -4,7 +4,8 @@ import Link from "next/link";
 import Weather from "./Weather";
 
 const TOKYO_TIMEZONE = "Asia/Tokyo";
-const TICKER_MESSAGE = "ULTIMO DIA DE LA OFERTA DE KINDLE AMAZON ESPAÑA DEL LIBRO";
+const TICKER_MESSAGE = "103 libros vendidos en Mayo, ¡muchas gracias a todos!";
+const TICKER_IMAGE_URL = "https://ohayers.ikublog.com/smilies/ikugracias.gif";
 const TICKER_URL =
   "https://www.amazon.es/Afinando-sue%C3%B1o-ikulibro-Oskar-D%C3%ADaz-ebook/dp/B0GM93MYKH";
 
@@ -115,11 +116,17 @@ export default async function SiteTopBar() {
         className="sticky top-0 z-[90] flex h-[var(--site-ticker-height)] items-center justify-center border-b border-[#ffaca1]/70 bg-[#111111] px-3 text-center text-[#fffdf8] shadow-[0_8px_24px_rgba(111,16,16,0.18)] transition hover:bg-[#2a2a2a]"
       >
         <span className="inline-flex max-w-7xl flex-wrap items-center justify-center gap-x-3 gap-y-0.5 leading-tight">
-          <span className="text-[0.6rem] font-black uppercase tracking-[0.12em] sm:text-[0.82rem] sm:tracking-[0.18em]">
+          <span className="text-[0.7rem] font-black tracking-[0.04em] sm:text-[0.9rem] sm:tracking-[0.08em]">
             {TICKER_MESSAGE}
           </span>
-          <span className="text-[0.6rem] font-black uppercase tracking-[0.12em] text-[#ffd84f] sm:text-[0.82rem] sm:tracking-[0.18em]">
-            Ver en Amazon España
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={TICKER_IMAGE_URL}
+            alt="Gracias"
+            className="h-8 w-auto shrink-0"
+          />
+          <span className="text-[0.7rem] font-black tracking-[0.04em] text-[#ffd84f] sm:text-[0.9rem] sm:tracking-[0.08em]">
+            Ver en Amazon
           </span>
         </span>
       </a>

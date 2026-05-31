@@ -1409,8 +1409,11 @@ export default async function Home() {
               Afinando un sueño, el ikulibro
             </h2>
             <p className="mt-6 max-w-2xl text-xl leading-8 text-[#4f4a43]">
-              Durante todo el mes de Mayo, la edición Kindle del libro está a
-              2€ en Amazon España.
+              Autobiografía de mi nueva vida desde que llegué a Tokio hace 19
+              años- Casado y con dos hijos, trabajo de IT desde casa para una
+              empresa japonesa y me dedico a contar mi vida, por si te interesa.
+              Si el libro no te emociona al menos una vez, me lo como con
+              wasabi.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <a
