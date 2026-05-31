@@ -3095,7 +3095,7 @@ export default function ForumClient({
       loadProfile(user).catch((error) => {
         console.error("Failed to load forum profile", error);
         setErrorMessage(
-          "No he podido cargar tu perfil del foro. Revisa que el SQL este aplicado.",
+          "No he podido cargar tu perfil. Revisa que el SQL este aplicado.",
         );
       });
     }, 0);
@@ -4823,7 +4823,7 @@ export default function ForumClient({
         {!user ? (
           <div className="editorial-card rounded-[2rem] px-6 py-8 text-center">
             <p className="text-lg text-[#4f4a44]">
-              Entra con Google para crear tu perfil del foro.
+              Entra con Google para crear tu perfil.
             </p>
             <button type="button" onClick={login} className="editorial-cta mt-6">
               Login con Google

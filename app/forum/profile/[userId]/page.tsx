@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type { SanityImageSource } from "@sanity/image-url";
 
 import ForumClient from "@/app/components/forum/ForumClient";
 import ForumEditProfileLink from "@/app/components/forum/ForumEditProfileLink";
@@ -8,9 +9,12 @@ import {
   FORUM_SMILIE_PATTERN,
   formatForumDate,
 } from "@/lib/forum";
+import { getForumPostShareImageUrl } from "@/lib/forum-seo";
 import { absoluteUrl } from "@/lib/seo";
 import { siteName } from "@/lib/site";
 import { supabase } from "@/lib/supabase";
+import { client } from "@/sanity/lib/client";
+import { urlFor } from "@/sanity/lib/image";
 
 type PublicForumProfile = {
   avatar_url: string | null;
@@ -49,8 +53,60 @@ type PublicForumActivityItem = PublicForumActivityPost & {
   category: PublicForumActivityCategory;
   excerpt: string;
   excerptHtml: string;
+  thumbnailUrl: string | null;
   topic: PublicForumActivityTopic;
   url: string;
+};
+
+type PublicCommentActivityRow = {
+  author: string | null;
+  avatar_url: string | null;
+  content: string;
+  created_at: string;
+  id: number | string;
+  post_slug: string;
+};
+
+type PublicCommentActivityItem = PublicCommentActivityRow & {
+  excerpt: string;
+  excerptHtml: string;
+  postTitle: string;
+  thumbnailUrl: string | null;
+  url: string;
+};
+
+type PublicProfileNewsAndCommentItem =
+  | {
+      created_at: string;
+      excerpt: string;
+      excerptHtml: string;
+      id: number | string;
+      kind: "comment";
+      thumbnailUrl: string | null;
+      title: string;
+      url: string;
+    }
+  | {
+      created_at: string;
+      excerpt: string;
+      excerptHtml: string;
+      id: number | string;
+      kind: "news";
+      thumbnailUrl: string | null;
+      title: string;
+      url: string;
+    };
+
+type CommentPostImage = SanityImageSource & {
+  alt?: string;
+};
+
+type CommentPostMetadata = {
+  mainImage?: CommentPostImage;
+  slug?: {
+    current?: string;
+  };
+  title?: string;
 };
 
 function getPublicForumCategory(
@@ -199,11 +255,119 @@ async function getPublicForumActivity(userId: string) {
         category,
         excerpt,
         excerptHtml: renderForumActivitySmilies(excerpt),
+        thumbnailUrl: getForumPostShareImageUrl(post.content),
         topic,
         url: `/forum/${category.slug}/${topic.slug}#forum-post-${post.id}`,
       },
     ];
   }).slice(0, 10) satisfies PublicForumActivityItem[];
+}
+
+async function getCommentPostMetadata(slugs: string[]) {
+  const uniqueSlugs = [...new Set(slugs.filter(Boolean))];
+
+  if (uniqueSlugs.length === 0) {
+    return new Map<string, { thumbnailUrl: string | null; title: string }>();
+  }
+
+  const posts = await client.fetch<CommentPostMetadata[]>(
+    `
+    *[
+      _type == "post" &&
+      slug.current in $slugs
+    ]{
+      mainImage,
+      title,
+      slug
+    }
+  `,
+    { slugs: uniqueSlugs },
+  );
+
+  return new Map(
+    posts.flatMap((post) => {
+      const slug = post.slug?.current;
+
+      return slug
+        ? [
+            [
+              slug,
+              {
+                thumbnailUrl: post.mainImage
+                  ? urlFor(post.mainImage).width(320).height(220).fit("crop").url()
+                  : null,
+                title: post.title ?? slug,
+              },
+            ],
+          ]
+        : [];
+    }),
+  );
+}
+
+async function getPublicCommentActivity(profile: PublicForumProfile | null) {
+  if (!profile) {
+    return [];
+  }
+
+  const commentRowsById = new Map<
+    PublicCommentActivityRow["id"],
+    PublicCommentActivityRow
+  >();
+
+  if (profile.avatar_url) {
+    const { data: avatarRows } = await supabase
+      .from("comments")
+      .select("id, post_slug, author, avatar_url, content, created_at")
+      .eq("avatar_url", profile.avatar_url)
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(20);
+
+    for (const comment of (avatarRows ?? []) as PublicCommentActivityRow[]) {
+      commentRowsById.set(comment.id, comment);
+    }
+  }
+
+  const { data: authorRows } = await supabase
+    .from("comments")
+    .select("id, post_slug, author, avatar_url, content, created_at")
+    .eq("author", profile.display_name)
+    .order("created_at", {
+      ascending: false,
+    })
+    .limit(20);
+
+  for (const comment of (authorRows ?? []) as PublicCommentActivityRow[]) {
+    commentRowsById.set(comment.id, comment);
+  }
+
+  const comments = [...commentRowsById.values()]
+    .filter((comment) => Boolean(comment.post_slug))
+    .sort(
+      (left, right) =>
+        new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+    )
+    .slice(0, 10);
+
+  const postMetadata = await getCommentPostMetadata(
+    comments.map((comment) => comment.post_slug),
+  );
+
+  return comments.map((comment) => {
+    const excerpt = getForumActivityExcerpt(comment.content);
+    const post = postMetadata.get(comment.post_slug);
+
+    return {
+      ...comment,
+      excerpt,
+      excerptHtml: renderForumActivitySmilies(excerpt),
+      postTitle: post?.title ?? comment.post_slug,
+      thumbnailUrl: post?.thumbnailUrl ?? null,
+      url: `/post/${comment.post_slug}`,
+    };
+  }) satisfies PublicCommentActivityItem[];
 }
 
 export async function generateMetadata({
@@ -214,18 +378,18 @@ export async function generateMetadata({
   const { userId } = await params;
   const profile = await getPublicForumProfile(userId);
   const title = profile?.display_name
-    ? `${profile.display_name} | Foro`
-    : "Perfil del foro";
+    ? `${profile.display_name} | Perfil`
+    : "Perfil";
 
   return {
     title,
-    description: profile?.bio || "Perfil público del foro de Ohayers.",
+    description: profile?.bio || "Perfil público de Ohayers.",
     alternates: {
       canonical: absoluteUrl(`/forum/profile/${userId}`),
     },
     openGraph: {
       title: `${title} | ${siteName}`,
-      description: profile?.bio || "Perfil público del foro de Ohayers.",
+      description: profile?.bio || "Perfil público de Ohayers.",
       url: absoluteUrl(`/forum/profile/${userId}`),
       siteName,
       type: "profile",
@@ -239,17 +403,47 @@ export default async function PublicForumProfilePage({
   params: Promise<{ userId: string }>;
 }) {
   const { userId } = await params;
-  const [profile, activity] = await Promise.all([
-    getPublicForumProfile(userId),
+  const profile = await getPublicForumProfile(userId);
+  const [activity, comments] = await Promise.all([
     getPublicForumActivity(userId),
+    getPublicCommentActivity(profile),
   ]);
+  const newsActivity = activity.filter((item) => item.category.slug === "ideas");
+  const forumActivity = activity.filter((item) => item.category.slug !== "ideas");
+  const newsAndComments = [
+    ...newsActivity.map((item) => ({
+      created_at: item.created_at,
+      excerpt: item.excerpt,
+      excerptHtml: item.excerptHtml,
+      id: `news-${item.id}`,
+      kind: item.parent_id ? ("comment" as const) : ("news" as const),
+      thumbnailUrl: item.thumbnailUrl,
+      title: item.parent_id
+        ? `Comentario en ${item.topic.title}`
+        : item.topic.title,
+      url: item.url,
+    })),
+    ...comments.map((comment) => ({
+      created_at: comment.created_at,
+      excerpt: comment.excerpt,
+      excerptHtml: comment.excerptHtml,
+      id: `comment-${comment.id}`,
+      kind: "comment" as const,
+      thumbnailUrl: comment.thumbnailUrl,
+      title: `Comentario en ${comment.postTitle}`,
+      url: comment.url,
+    })),
+  ].sort(
+    (left, right) =>
+      new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+  ) satisfies PublicProfileNewsAndCommentItem[];
 
   return (
     <>
       <ForumClient chromeOnly />
 
       <main className="min-h-screen bg-[#f8f6f2]">
-        <section className="mx-auto max-w-3xl px-6 py-12">
+        <section className="mx-auto max-w-7xl px-6 py-12">
           <div className="mb-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Link href="/forum" className="editorial-link-button">
@@ -263,7 +457,7 @@ export default async function PublicForumProfilePage({
                 Comunidad
               </p>
               <h1 className="mt-2 text-2xl font-black leading-tight sm:text-3xl">
-                Perfil del foro
+                Perfil
               </h1>
             </div>
           </div>
@@ -302,53 +496,176 @@ export default async function PublicForumProfilePage({
               </p>
             )}
 
-            <div className="mt-9 border-t border-[#d6d1c8] pt-7">
-              <h3 className="text-base font-black uppercase tracking-[0.16em] text-[#111111]">
-                Últimos posts y respuestas
-              </h3>
+            <div className="profile-activity mt-9 border-t border-[#d6d1c8] pt-7">
+              <input
+                id="profile-activity-news"
+                type="radio"
+                name="profile-activity-tabs"
+                className="profile-activity__input"
+                defaultChecked
+              />
+              <input
+                id="profile-activity-forum"
+                type="radio"
+                name="profile-activity-tabs"
+                className="profile-activity__input"
+              />
 
-              {activity.length > 0 ? (
-                <div className="mt-5 space-y-4">
-                  {activity.map((item) => (
-                    <Link
-                      key={item.id}
-                      href={item.url}
-                      className="block rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-4 py-4 transition hover:bg-[#f5efe4]"
-                    >
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.68rem] font-black uppercase tracking-[0.16em] text-red-700">
-                        <span>{item.parent_id ? "Respuesta" : "Post"}</span>
-                        <span className="text-[#7a746b]">{item.category.title}</span>
-                      </div>
-                      <h4 className="mt-2 text-base font-black leading-tight text-[#111111]">
-                        {item.parent_id
-                          ? `Respuesta en ${item.topic.title}`
-                          : item.topic.title}
-                      </h4>
-                      {item.excerpt && (
-                        <p
-                          className="mt-2 line-clamp-2 text-sm leading-6 text-[#5f5952]"
-                          dangerouslySetInnerHTML={{
-                            __html: item.excerptHtml,
-                          }}
-                        />
-                      )}
-                      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#7a746b]">
-                        {formatForumDate(item.created_at)}
-                      </p>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-5 text-sm leading-6 text-[#6a645c]">
-                  Todavía no hay posts o respuestas visibles.
-                </p>
-              )}
+              <div className="profile-activity__tablist mb-6 grid grid-cols-2 gap-2 rounded-full border border-[#d6d1c8] bg-[#fffdf8] p-1 shadow-[0_8px_18px_rgba(17,17,17,0.05)]">
+                <label
+                  htmlFor="profile-activity-news"
+                  className="profile-activity__tab profile-activity__tab--news flex min-h-12 cursor-pointer items-center justify-center rounded-full border border-transparent px-3 py-2 text-center text-[0.62rem] font-black uppercase leading-tight tracking-[0.12em] text-[#5f5952] transition"
+                >
+                  Noticias enviadas y comentarios
+                </label>
+                <label
+                  htmlFor="profile-activity-forum"
+                  className="profile-activity__tab profile-activity__tab--forum flex min-h-12 cursor-pointer items-center justify-center rounded-full border border-transparent px-3 py-2 text-center text-[0.62rem] font-black uppercase leading-tight tracking-[0.12em] text-[#5f5952] transition"
+                >
+                  Posts y respuestas en el foro
+                </label>
+              </div>
+
+              <div className="profile-activity__panels grid gap-6">
+                <section className="profile-activity__panel profile-activity__panel--news">
+                  <h3 className="text-base font-black uppercase tracking-[0.16em] text-[#111111]">
+                    Noticias enviadas y comentarios
+                  </h3>
+
+                  {newsAndComments.length > 0 ? (
+                    <div className="mt-5 space-y-4">
+                      {newsAndComments.map((item) => (
+                        <Link
+                          key={item.id}
+                          href={item.url}
+                          className="block rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-4 py-4 transition hover:bg-[#f5efe4]"
+                        >
+                          <div
+                            className={`grid gap-3 ${
+                              item.thumbnailUrl
+                                ? "grid-cols-[4.75rem_minmax(0,1fr)] sm:grid-cols-[6rem_minmax(0,1fr)]"
+                                : ""
+                            }`}
+                          >
+                            {item.thumbnailUrl ? (
+                              <span className="block h-20 w-full overflow-hidden rounded-xl border border-[#d6d1c8] bg-[#ece8df] sm:h-24">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={item.thumbnailUrl}
+                                  alt=""
+                                  loading="lazy"
+                                  className="h-full w-full object-cover"
+                                />
+                              </span>
+                            ) : null}
+
+                            <span className="min-w-0">
+                              <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.68rem] font-black uppercase tracking-[0.16em] text-red-700">
+                                <span>
+                                  {item.kind === "news"
+                                    ? "Noticia enviada"
+                                    : "Comentario"}
+                                </span>
+                              </span>
+                              <span className="mt-2 block text-base font-black leading-tight text-[#111111]">
+                                {item.title}
+                              </span>
+                              {item.excerpt && (
+                                <span
+                                  className="mt-2 line-clamp-2 block text-sm leading-6 text-[#5f5952]"
+                                  dangerouslySetInnerHTML={{
+                                    __html: item.excerptHtml,
+                                  }}
+                                />
+                              )}
+                              <span className="mt-3 block text-xs font-semibold uppercase tracking-[0.14em] text-[#7a746b]">
+                                {formatForumDate(item.created_at)}
+                              </span>
+                            </span>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-5 text-sm leading-6 text-[#6a645c]">
+                      Todavía no hay noticias enviadas o comentarios visibles.
+                    </p>
+                  )}
+                </section>
+
+                <section className="profile-activity__panel profile-activity__panel--forum">
+                  <h3 className="text-base font-black uppercase tracking-[0.16em] text-[#111111]">
+                    Posts y respuestas en el foro
+                  </h3>
+
+                  {forumActivity.length > 0 ? (
+                    <div className="mt-5 space-y-4">
+                      {forumActivity.map((item) => (
+                        <Link
+                          key={item.id}
+                          href={item.url}
+                          className="block rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] px-4 py-4 transition hover:bg-[#f5efe4]"
+                        >
+                          <div
+                            className={`grid gap-3 ${
+                              item.thumbnailUrl
+                                ? "grid-cols-[4.75rem_minmax(0,1fr)] sm:grid-cols-[6rem_minmax(0,1fr)]"
+                                : ""
+                            }`}
+                          >
+                            {item.thumbnailUrl ? (
+                              <span className="block h-20 w-full overflow-hidden rounded-xl border border-[#d6d1c8] bg-[#ece8df] sm:h-24">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={item.thumbnailUrl}
+                                  alt=""
+                                  loading="lazy"
+                                  className="h-full w-full object-cover"
+                                />
+                              </span>
+                            ) : null}
+
+                            <span className="min-w-0">
+                              <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.68rem] font-black uppercase tracking-[0.16em] text-red-700">
+                                <span>{item.parent_id ? "Respuesta" : "Post"}</span>
+                                <span className="text-[#7a746b]">
+                                  {item.category.title}
+                                </span>
+                              </span>
+                              <span className="mt-2 block text-base font-black leading-tight text-[#111111]">
+                                {item.parent_id
+                                  ? `Respuesta en ${item.topic.title}`
+                                  : item.topic.title}
+                              </span>
+                              {item.excerpt && (
+                                <span
+                                  className="mt-2 line-clamp-2 block text-sm leading-6 text-[#5f5952]"
+                                  dangerouslySetInnerHTML={{
+                                    __html: item.excerptHtml,
+                                  }}
+                                />
+                              )}
+                              <span className="mt-3 block text-xs font-semibold uppercase tracking-[0.14em] text-[#7a746b]">
+                                {formatForumDate(item.created_at)}
+                              </span>
+                            </span>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-5 text-sm leading-6 text-[#6a645c]">
+                      Todavía no hay posts o respuestas visibles.
+                    </p>
+                  )}
+                </section>
+              </div>
             </div>
             </article>
           ) : (
             <div className="editorial-card mt-8 rounded-[2rem] px-6 py-8 text-center">
               <p className="text-base leading-7 text-[#5f5952]">
-                No he encontrado este perfil del foro.
+                No he encontrado este perfil.
               </p>
             </div>
           )}

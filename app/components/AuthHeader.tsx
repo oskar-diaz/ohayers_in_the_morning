@@ -28,6 +28,10 @@ function getInitial(name: string) {
   return name.trim().charAt(0).toUpperCase() || "U";
 }
 
+function getForumProfileUrl(userId: string) {
+  return `/forum/profile/${encodeURIComponent(userId)}`;
+}
+
 export default function AuthHeader() {
   const pathname = usePathname();
   const [session, setSession] = useState<Session | null>(null);
@@ -95,7 +99,11 @@ export default function AuthHeader() {
       aria-label="Sesion"
       className="fixed left-2 right-2 top-2 z-[80] flex h-10 max-w-[420px] items-center justify-between gap-2 rounded-full border border-black/10 bg-[#fffdf8]/95 px-2 shadow-[0_10px_28px_rgba(17,17,17,0.14)] backdrop-blur sm:left-4 sm:right-auto sm:w-[min(420px,calc(100vw-2rem))]"
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <Link
+        href={getForumProfileUrl(user.id)}
+        className="flex min-w-0 items-center gap-2 rounded-full pr-1 transition hover:bg-[#f5efe4] focus:outline-none focus:ring-2 focus:ring-[#111111]/20"
+        aria-label="Ver tu perfil"
+      >
         {avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -112,7 +120,7 @@ export default function AuthHeader() {
         <span className="min-w-0 truncate text-[0.82rem] font-semibold text-[#111111]">
           {name}
         </span>
-      </div>
+      </Link>
 
       <div className="flex shrink-0 items-center gap-1.5">
         {isForumPath && (

@@ -4,6 +4,9 @@ import Link from "next/link";
 import Weather from "./Weather";
 
 const TOKYO_TIMEZONE = "Asia/Tokyo";
+const TICKER_MESSAGE = "ULTIMO DIA DE LA OFERTA DE KINDLE AMAZON ESPAÑA DEL LIBRO";
+const TICKER_URL =
+  "https://www.amazon.es/Afinando-sue%C3%B1o-ikulibro-Oskar-D%C3%ADaz-ebook/dp/B0GM93MYKH";
 
 type AnniversaryResponse = {
   anniv1?: string;
@@ -184,6 +187,21 @@ export default async function SiteTopBar() {
           </div>
         </div>
       </div>
+
+      <a
+        href={TICKER_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={TICKER_MESSAGE}
+        className="relative z-30 block border-t border-[#ffaca1]/70 bg-[#111111] px-4 py-2 text-center text-[#fffdf8] shadow-[0_-8px_24px_rgba(111,16,16,0.18)] transition hover:bg-[#2a2a2a]"
+      >
+        <span className="text-[0.72rem] font-black uppercase tracking-[0.18em] sm:text-[0.82rem]">
+          {TICKER_MESSAGE}
+        </span>
+        <span className="ml-3 text-[0.72rem] font-black uppercase tracking-[0.18em] text-[#ffd84f] sm:text-[0.82rem]">
+          Ver en Amazon España
+        </span>
+      </a>
     </div>
   );
 }

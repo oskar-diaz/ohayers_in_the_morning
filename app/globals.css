@@ -19,6 +19,42 @@ body {
   font-family: var(--font-sans);
 }
 
+.profile-activity__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.profile-activity__panel--forum {
+  display: none;
+}
+
+#profile-activity-news:checked
+  ~ .profile-activity__tablist
+  .profile-activity__tab--news,
+#profile-activity-forum:checked
+  ~ .profile-activity__tablist
+  .profile-activity__tab--forum {
+  border-color: #111111;
+  background: #111111;
+  color: #fffdf8;
+  box-shadow: 0 8px 18px rgba(17, 17, 17, 0.14);
+}
+
+#profile-activity-forum:checked
+  ~ .profile-activity__panels
+  .profile-activity__panel--news {
+  display: none;
+}
+
+#profile-activity-forum:checked
+  ~ .profile-activity__panels
+  .profile-activity__panel--forum {
+  display: block;
+}
+
 h1,
 h2,
 h3,

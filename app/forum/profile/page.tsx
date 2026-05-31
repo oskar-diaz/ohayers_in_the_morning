@@ -5,14 +5,14 @@ import { absoluteUrl } from "@/lib/seo";
 import { siteName } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Perfil del foro",
-  description: "Gestiona tu nombre, avatar y bio del foro de Ohayers.",
+  title: "Perfil",
+  description: "Gestiona tu nombre, avatar y bio.",
   alternates: {
     canonical: absoluteUrl("/forum/profile"),
   },
   openGraph: {
-    title: `Perfil del foro | ${siteName}`,
-    description: "Gestiona tu perfil de la comunidad de Ohayers.",
+    title: `Perfil | ${siteName}`,
+    description: "Gestiona tu perfil de Ohayers.",
     url: absoluteUrl("/forum/profile"),
     siteName,
     type: "website",
