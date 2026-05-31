@@ -1,10 +1,16 @@
 "use client";
 
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, startTransition, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import { Heart } from "lucide-react";
 
 import AuthPanel from "@/app/components/AuthPanel";
+import {
+  getLikedPosts,
+  useLikedPost,
+  writeLikedPosts,
+} from "@/app/components/likedPostsStore";
 import { ADMIN_EMAILS, normalizeEmail } from "@/lib/admin";
 import { getConfirmedSession } from "@/lib/auth-confirmation";
 import {
@@ -32,6 +38,10 @@ type CommentRecord = {
 type CommentNode = CommentRecord & {
   replies: CommentNode[];
 };
+
+function getCommentLikeKey(commentId: CommentId) {
+  return `news-comment-${commentId}`;
+}
 
 function getDisplayName(comment: Pick<CommentRecord, "author" | "email">) {
   if (comment.author?.trim()) {
@@ -180,8 +190,80 @@ function CommentSmilieBar({ onPick }: { onPick: (value: string) => void }) {
   );
 }
 
+function CommentLikeButton({
+  commentKey,
+  likes,
+  onLiked,
+}: {
+  commentKey: string;
+  likes: number;
+  onLiked: (likes: number) => void;
+}) {
+  const liked = useLikedPost(commentKey);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function likeComment() {
+    if (liked || isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch(`/api/likes/${encodeURIComponent(commentKey)}`, {
+        cache: "no-store",
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("comment_like_failed");
+      }
+
+      const data = (await response.json()) as { likes?: number };
+      const nextLikes = data.likes ?? likes + 1;
+      const likedPosts = getLikedPosts();
+      const nextLikedPosts = likedPosts.includes(commentKey)
+        ? likedPosts
+        : [...likedPosts, commentKey];
+
+      writeLikedPosts(nextLikedPosts);
+
+      startTransition(() => {
+        onLiked(nextLikes);
+      });
+    } catch {
+      // Keep the current UI if the like request fails transiently.
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={likeComment}
+      disabled={liked || isSubmitting}
+      aria-pressed={liked}
+      aria-label={
+        liked
+          ? "Ya te gusta este comentario"
+          : "Dar me gusta a este comentario"
+      }
+      className="inline-flex items-center gap-1.5 rounded-full border border-[#d6d1c8] bg-[#fffdf8] px-2.5 py-1.5 text-[0.68rem] font-black uppercase tracking-[0.12em] text-[#b93c3c] transition hover:border-[#b93c3c] hover:text-[#8f1f1f] disabled:cursor-not-allowed disabled:opacity-100"
+    >
+      {likes > 0 && <span>{likes.toLocaleString()}</span>}
+      <Heart
+        size={14}
+        strokeWidth={2.4}
+        fill={liked ? "currentColor" : "none"}
+      />
+    </button>
+  );
+}
+
 export default function Comments({ slug }: { slug: string }) {
   const [comments, setComments] = useState<CommentRecord[]>([]);
+  const [commentLikes, setCommentLikes] = useState<Record<string, number>>({});
   const [user, setUser] = useState<User | null>(null);
   const [text, setText] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
@@ -230,7 +312,53 @@ export default function Comments({ slug }: { slug: string }) {
       return;
     }
 
-    setComments((data as CommentRecord[]) || []);
+    const nextComments = (data as CommentRecord[]) || [];
+
+    setComments(nextComments);
+    void loadCommentLikes(nextComments);
+  }
+
+  async function loadCommentLikes(nextComments: CommentRecord[]) {
+    const slugs = nextComments.map((comment) => getCommentLikeKey(comment.id));
+
+    if (slugs.length === 0) {
+      setCommentLikes({});
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/likes", {
+        body: JSON.stringify({ slugs }),
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("comment_likes_failed");
+      }
+
+      const data = (await response.json()) as {
+        likes?: Record<string, number>;
+      };
+
+      setCommentLikes(data.likes ?? {});
+    } catch {
+      setCommentLikes(
+        Object.fromEntries(slugs.map((commentKey) => [commentKey, 0])),
+      );
+    }
+  }
+
+  function updateCommentLike(commentId: CommentId, likes: number) {
+    const commentKey = getCommentLikeKey(commentId);
+
+    setCommentLikes((currentLikes) => ({
+      ...currentLikes,
+      [commentKey]: likes,
+    }));
   }
 
   useEffect(() => {
@@ -253,7 +381,10 @@ export default function Comments({ slug }: { slug: string }) {
           return;
         }
 
-        setComments((data as CommentRecord[]) || []);
+        const nextComments = (data as CommentRecord[]) || [];
+
+        setComments(nextComments);
+        void loadCommentLikes(nextComments);
       });
 
     supabase.auth.getSession().then(({ data }) => {
@@ -475,6 +606,7 @@ export default function Comments({ slug }: { slug: string }) {
     const canEdit = canEditComment(comment);
     const canDelete = canDeleteComment(comment);
     const isBusy = activeCommentActionId === comment.id;
+    const commentLikeKey = getCommentLikeKey(comment.id);
 
     return (
       <div
@@ -507,6 +639,12 @@ export default function Comments({ slug }: { slug: string }) {
             </div>
 
             <div className="flex shrink-0 items-center gap-1">
+              <CommentLikeButton
+                commentKey={commentLikeKey}
+                likes={commentLikes[commentLikeKey] ?? 0}
+                onLiked={(likes) => updateCommentLike(comment.id, likes)}
+              />
+
               <button
                 type="button"
                 onClick={() => startReply(comment)}

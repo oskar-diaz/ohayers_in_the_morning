@@ -54,7 +54,9 @@ import {
   writeLikedPosts,
 } from "@/app/components/likedPostsStore";
 import AuthPanel from "@/app/components/AuthPanel";
+import InstagramEmbed from "@/app/components/InstagramEmbed";
 import PostShareButtons from "@/app/components/PostShareButtons";
+import XEmbed from "@/app/components/XEmbed";
 import { ADMIN_EMAILS, normalizeEmail } from "@/lib/admin";
 import { getConfirmedSession } from "@/lib/auth-confirmation";
 import {
@@ -180,6 +182,10 @@ const FORUM_TEXT_ALIGNMENTS = new Set<ForumTextAlign>([
 ]);
 const FORUM_TEXT_ALIGN_TAGS = new Set(["blockquote", "div", "li", "p"]);
 const FORUM_URL_PATTERN = /https?:\/\/[^\s<]+/g;
+const FORUM_EMBED_BLOCK_PATTERN =
+  /<p(?:\s[^>]*)?>\s*<a\b[^>]*\bhref="([^"]+)"[^>]*>[\s\S]*?<\/a>\s*<\/p>/gi;
+const FORUM_POST_CONTENT_CLASS_NAME =
+  "break-words text-[1.03rem] leading-8 text-[#222] [&_a]:font-bold [&_a]:text-red-700 [&_a]:underline [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-[#d6d1c8] [&_blockquote]:pl-4 [&_blockquote]:text-[0.92rem] [&_blockquote]:leading-7 [&_li]:ml-5 [&_ol]:my-3 [&_ol]:list-decimal [&_p]:mb-3 [&_strong]:font-black [&_ul]:my-3 [&_ul]:list-disc";
 const EMPTY_FORUM_TOPIC_METRICS: ForumTopicMetrics = {
   likes: 0,
   views: 0,
@@ -1219,6 +1225,177 @@ function renderForumContentHtml(value: string) {
   return sanitizeForumHtml(value, true);
 }
 
+function getForumXStatusUrl(value: string) {
+  const safeHref = normalizeForumUrl(decodeForumHtmlEntities(value));
+
+  if (!safeHref) {
+    return null;
+  }
+
+  try {
+    const url = new URL(safeHref);
+    const hostName = url.hostname.toLowerCase();
+
+    if (
+      ![
+        "x.com",
+        "www.x.com",
+        "twitter.com",
+        "www.twitter.com",
+        "mobile.twitter.com",
+      ].includes(hostName)
+    ) {
+      return null;
+    }
+
+    if (!/^\/(?:[a-z0-9_]+|i\/web)\/status\/\d+(?:\/.*)?$/i.test(url.pathname)) {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function getForumInstagramPostUrl(value: string) {
+  const safeHref = normalizeForumUrl(decodeForumHtmlEntities(value));
+
+  if (!safeHref) {
+    return null;
+  }
+
+  try {
+    const url = new URL(safeHref);
+    const hostName = url.hostname.toLowerCase();
+
+    if (
+      ![
+        "instagram.com",
+        "www.instagram.com",
+        "m.instagram.com",
+      ].includes(hostName)
+    ) {
+      return null;
+    }
+
+    const match = url.pathname.match(
+      /^\/(p|reel|reels|tv)\/([a-z0-9_-]+)(?:\/.*)?$/i,
+    );
+
+    if (!match) {
+      return null;
+    }
+
+    const contentType = match[1].toLowerCase() === "reels" ? "reel" : match[1];
+
+    return `https://www.instagram.com/${contentType}/${match[2]}/`;
+  } catch {
+    return null;
+  }
+}
+
+function getForumContentEmbedParts(value: string) {
+  const html = renderForumContentHtml(value);
+  const parts: Array<
+    | {
+        html: string;
+        type: "html";
+      }
+    | {
+        type: "instagram";
+        url: string;
+      }
+    | {
+        type: "x";
+        url: string;
+      }
+  > = [];
+  let cursor = 0;
+
+  for (const match of html.matchAll(FORUM_EMBED_BLOCK_PATTERN)) {
+    const index = match.index ?? 0;
+    const href = match[1] ?? "";
+    const instagramUrl = getForumInstagramPostUrl(href);
+    const xUrl = getForumXStatusUrl(href);
+    const embedPart = instagramUrl
+      ? {
+          type: "instagram" as const,
+          url: instagramUrl,
+        }
+      : xUrl
+        ? {
+            type: "x" as const,
+            url: xUrl,
+          }
+        : null;
+
+    if (!embedPart) {
+      continue;
+    }
+
+    const before = html.slice(cursor, index);
+
+    if (before.trim()) {
+      parts.push({
+        html: before,
+        type: "html",
+      });
+    }
+
+    parts.push(embedPart);
+    cursor = index + match[0].length;
+  }
+
+  const rest = html.slice(cursor);
+
+  if (rest.trim()) {
+    parts.push({
+      html: rest,
+      type: "html",
+    });
+  }
+
+  return parts.length > 0
+    ? parts
+    : [
+        {
+          html,
+          type: "html" as const,
+        },
+      ];
+}
+
+function ForumPostContent({ content }: { content: string }) {
+  return (
+    <>
+      {getForumContentEmbedParts(content).map((part, index) =>
+        part.type === "x" ? (
+          <XEmbed
+            key={`${part.url}-${index}`}
+            url={part.url}
+            className="my-5 [&_iframe]:mx-auto [&_iframe]:max-w-full"
+          />
+        ) : part.type === "instagram" ? (
+          <InstagramEmbed
+            key={`${part.url}-${index}`}
+            url={part.url}
+            className="my-5 mx-auto w-full max-w-[560px]"
+          />
+        ) : (
+          <div
+            key={`html-${index}`}
+            className={FORUM_POST_CONTENT_CLASS_NAME}
+            dangerouslySetInnerHTML={{
+              __html: part.html,
+            }}
+          />
+        ),
+      )}
+    </>
+  );
+}
+
 function renderForumPreviewHtml(value: string) {
   return renderForumTextSegment(getForumPreviewText(value), true, false);
 }
@@ -1708,6 +1885,7 @@ function ForumTopicLocationBadge({
   const isCompact = size === "compact";
   const locationLines = getForumLocationLines(location);
   const normalizedZone = normalizeForumTopicZone(zone);
+  const shouldShowLocationIcon = !normalizedZone && locationLines.length > 0;
 
   if (locationLines.length === 0 && !normalizedZone) {
     return null;
@@ -1722,11 +1900,6 @@ function ForumTopicLocationBadge({
           : "w-[7.75rem] px-2.5 py-2 sm:w-40 sm:border-2 sm:px-3 sm:py-3 sm:shadow-[6px_6px_0_rgba(17,17,17,0.08)]"
       } ${className}`}
     >
-      <MapPin
-        size={isCompact ? 13 : 15}
-        strokeWidth={2.4}
-        className="mx-auto mb-1 text-red-700"
-      />
       <p
         className={`space-y-0.5 font-black uppercase leading-tight text-[#5f5952] ${
           isCompact
@@ -1735,12 +1908,27 @@ function ForumTopicLocationBadge({
         }`}
       >
         {normalizedZone && (
-          <span className="block break-words text-red-700">
+          <span className="flex min-w-0 items-center justify-center gap-1 break-words text-red-700">
+            <MapPin
+              size={isCompact ? 12 : 14}
+              strokeWidth={2.4}
+              className="shrink-0"
+            />
             {normalizedZone}
           </span>
         )}
         {locationLines.map((line, index) => (
-          <span key={`${line}-${index}`} className="block break-words">
+          <span
+            key={`${line}-${index}`}
+            className="flex min-w-0 items-center justify-center gap-1 break-words"
+          >
+            {shouldShowLocationIcon && index === 0 && (
+              <MapPin
+                size={isCompact ? 12 : 14}
+                strokeWidth={2.4}
+                className="shrink-0 text-red-700"
+              />
+            )}
             {line}
           </span>
         ))}
@@ -4261,6 +4449,7 @@ export default function ForumClient({
     topic: ForumTopic,
     options?: {
       eyebrow?: string;
+      locationAtMetaEnd?: boolean;
       previewContent?: string;
       showCategory?: boolean;
     },
@@ -4279,8 +4468,11 @@ export default function ForumClient({
     );
     const topicLocation = normalizeForumTopicLocation(topic.event_location);
     const topicZone = normalizeForumTopicZone(topic.event_zone);
+    const shouldShowLocationAtMetaEnd = Boolean(
+      options?.locationAtMetaEnd && topicDateRange && (topicLocation || topicZone),
+    );
     const shouldShowLocationWithDate = Boolean(
-      topicDateRange && (topicLocation || topicZone),
+      topicDateRange && (topicLocation || topicZone) && !shouldShowLocationAtMetaEnd,
     );
     const isUnreadTopic = isForumTopicUnread(topic, forumTopicReadMarkers);
     const hasTopicReplies = topic.reply_count > 0;
@@ -4422,6 +4614,14 @@ export default function ForumClient({
                     })
                   }
                 />
+                {shouldShowLocationAtMetaEnd && (
+                  <ForumTopicLocationBadge
+                    className="ml-auto"
+                    location={topicLocation}
+                    size="compact"
+                    zone={topicZone}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -4433,10 +4633,12 @@ export default function ForumClient({
 
   function renderEventTopicListSection({
     emptyMessage,
+    locationAtMetaEnd = false,
     title,
     topics: sectionTopics,
   }: {
     emptyMessage: string;
+    locationAtMetaEnd?: boolean;
     title: string;
     topics: ForumTopic[];
   }) {
@@ -4453,7 +4655,11 @@ export default function ForumClient({
 
         <div className="editorial-card rounded-[2rem] px-5 py-4 sm:px-7">
           {sectionTopics.length > 0 ? (
-            sectionTopics.map((topic) => renderTopicListItem(topic))
+            sectionTopics.map((topic) =>
+              renderTopicListItem(topic, {
+                locationAtMetaEnd,
+              }),
+            )
           ) : (
             <div className="py-8 text-center text-sm text-[#5f5952]">
               <p>{emptyMessage}</p>
@@ -4864,7 +5070,7 @@ export default function ForumClient({
                     </span>
                     {topicDateRange && (
                       <div className="justify-self-end">
-                        <div className="flex flex-row flex-wrap items-start justify-end gap-2 sm:flex-col sm:items-end">
+                        <div className="flex flex-row flex-wrap items-start justify-end gap-2 sm:flex-nowrap">
                           <ForumTopicCalendarBadge
                             dateRange={topicDateRange}
                             size="compact"
@@ -5245,12 +5451,7 @@ export default function ForumClient({
                   Oculto
                 </span>
               )}
-              <div
-                className="break-words text-[1.03rem] leading-8 text-[#222] [&_a]:font-bold [&_a]:text-red-700 [&_a]:underline [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-[#d6d1c8] [&_blockquote]:pl-4 [&_blockquote]:text-[0.92rem] [&_blockquote]:leading-7 [&_li]:ml-5 [&_ol]:my-3 [&_ol]:list-decimal [&_p]:mb-3 [&_strong]:font-black [&_ul]:my-3 [&_ul]:list-disc"
-                dangerouslySetInnerHTML={{
-                  __html: renderForumContentHtml(post.content),
-                }}
-              />
+              <ForumPostContent content={post.content} />
             </div>
           )}
         </article>
@@ -5941,6 +6142,7 @@ export default function ForumClient({
                   <div className="space-y-8">
                     {renderEventTopicListSection({
                       emptyMessage: "No hay eventos actuales o próximos.",
+                      locationAtMetaEnd: true,
                       title: "Eventos actuales y próximos",
                       topics: currentForumEventTopicSections.upcomingTopics,
                     })}
