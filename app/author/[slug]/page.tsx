@@ -264,6 +264,7 @@ export default async function AuthorPage({
       <section className="mx-auto grid max-w-7xl gap-10 px-6 py-14 md:grid-cols-2">
         {validPosts.map((post) => {
           const postSlug = post.slug.current;
+          const postViews = views[postSlug] ?? 0;
 
           return (
             <article key={post._id} className="border-b newspaper-border pb-10">
@@ -306,8 +307,12 @@ export default async function AuthorPage({
 
               <p className="mt-6 text-xs text-gray-500">
                 {formatPublicationDateTime(post.publishedAt)}
-                {" · "}
-                {(views[postSlug] ?? 0).toLocaleString()} vistas
+                {postViews > 0 && (
+                  <>
+                    {" · "}
+                    {postViews.toLocaleString()} vistas
+                  </>
+                )}
               </p>
             </article>
           );

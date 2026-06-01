@@ -402,6 +402,7 @@ export default async function CategoryPage({
         {validPosts.map((post) => {
           const postSlug = post.slug.current;
           const displayAuthor = getDisplayAuthor(postSlug, post.author);
+          const postViews = views[postSlug] ?? 0;
 
           return (
             <article key={post._id} className="border-b newspaper-border pb-10">
@@ -455,8 +456,12 @@ export default async function CategoryPage({
 
                   <p className="text-gray-500 text-xs">
                     {formatPublicationDateTime(post.publishedAt)}
-                    {" · "}
-                    {(views[postSlug] ?? 0).toLocaleString()} vistas
+                    {postViews > 0 && (
+                      <>
+                        {" · "}
+                        {postViews.toLocaleString()} vistas
+                      </>
+                    )}
                   </p>
                 </div>
               </div>

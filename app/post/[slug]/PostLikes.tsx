@@ -2,7 +2,11 @@
 
 import { startTransition, useState } from "react";
 
-import { getLikedPosts, useLikedPost, writeLikedPosts } from "@/app/components/likedPostsStore";
+import {
+  getLikedPosts,
+  useLikedPost,
+  writeLikedPosts,
+} from "@/app/components/likedPostsStore";
 
 type PostLikesProps = {
   slug: string;
@@ -80,9 +84,11 @@ export default function PostLikes({ slug, initialLikes }: PostLikesProps) {
       </span>
 
       <span className="flex flex-col">
-        <span className="text-2xl font-black newspaper-title leading-none">
-          {likes.toLocaleString()}
-        </span>
+        {likes > 0 && (
+          <span className="text-2xl font-black newspaper-title leading-none">
+            {likes.toLocaleString()}
+          </span>
+        )}
         <span className="mt-1 text-[0.72rem] uppercase tracking-[0.16em] text-[#7a746b]">
           {liked ? "Te gusta esto" : "Dale love"}
         </span>

@@ -2042,7 +2042,7 @@ function ForumMetricLikeButton({
         strokeWidth={2.4}
         fill={liked ? "currentColor" : "none"}
       />
-      <span>{likes.toLocaleString()}</span>
+      {likes > 0 && <span>{likes.toLocaleString()}</span>}
     </button>
   );
 }
@@ -2811,11 +2811,16 @@ export default function ForumClient({
     });
   }
 
-  async function loadTopicPreviews(nextTopics: ForumTopic[]) {
-    const topicIds = nextTopics.map((topic) => topic.id);
+  async function loadTopicPreviews(
+    nextTopics: ForumTopic[],
+    options: { merge?: boolean } = {},
+  ) {
+    const topicIds = [...new Set(nextTopics.map((topic) => topic.id))];
 
     if (topicIds.length === 0) {
-      setTopicPreviews({});
+      if (!options.merge) {
+        setTopicPreviews({});
+      }
       return;
     }
 
@@ -2844,6 +2849,14 @@ export default function ForumClient({
         content: post.content,
         thumbnailUrl: getForumContentThumbnailUrl(post.content),
       };
+    }
+
+    if (options.merge) {
+      setTopicPreviews((currentPreviews) => ({
+        ...currentPreviews,
+        ...previews,
+      }));
+      return;
     }
 
     setTopicPreviews(previews);
@@ -3301,6 +3314,24 @@ export default function ForumClient({
       window.clearTimeout(timeoutId);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isUnreadTopicsViewOpen || unreadTopics.length === 0) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void loadTopicPreviews(unreadTopics, {
+        merge: true,
+      }).catch((error) => {
+        console.error("Failed to load unread forum topic previews", error);
+      });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isUnreadTopicsViewOpen, unreadTopics]);
 
   useEffect(() => {
     if (!isTopicView || !currentTopic) {
@@ -4476,6 +4507,7 @@ export default function ForumClient({
     );
     const isUnreadTopic = isForumTopicUnread(topic, forumTopicReadMarkers);
     const hasTopicReplies = topic.reply_count > 0;
+    const shouldReserveRightRail = hasTopicReplies || shouldShowLocationAtMetaEnd;
     const shouldShowTopicMetaRow =
       Boolean(options?.eyebrow) ||
       Boolean(options?.showCategory && category) ||
@@ -4487,7 +4519,7 @@ export default function ForumClient({
       <article
         key={topic.id}
         className={`relative border-b border-[#d6d1c8] py-5 last:border-b-0 ${
-          hasTopicReplies ? "pr-28 sm:pr-32" : ""
+          shouldReserveRightRail ? "pr-28 sm:pr-32" : ""
         }`}
       >
         {hasTopicReplies && (
@@ -4499,6 +4531,15 @@ export default function ForumClient({
               </p>
             </div>
           </div>
+        )}
+
+        {shouldShowLocationAtMetaEnd && (
+          <ForumTopicLocationBadge
+            className="absolute bottom-5 right-0"
+            location={topicLocation}
+            size="compact"
+            zone={topicZone}
+          />
         )}
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -4592,17 +4633,21 @@ export default function ForumClient({
                   <span>
                     {formatForumDate(topic.last_post_at)}
                   </span>
-                  {topicLocation && !shouldShowLocationWithDate && (
-                    <ForumTopicLocationPill
-                      location={topicLocation}
-                      size="compact"
-                    />
-                  )}
+                  {topicLocation &&
+                    !shouldShowLocationWithDate &&
+                    !shouldShowLocationAtMetaEnd && (
+                      <ForumTopicLocationPill
+                        location={topicLocation}
+                        size="compact"
+                      />
+                    )}
                 </span>
-                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                  <Eye size={15} strokeWidth={2.2} />
-                  {metrics.views.toLocaleString()} vistas
-                </span>
+                {metrics.views > 0 && (
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                    <Eye size={15} strokeWidth={2.2} />
+                    {metrics.views.toLocaleString()} vistas
+                  </span>
+                )}
                 <ForumMetricLikeButton
                   compact
                   metricKey={metricKey}
@@ -4614,14 +4659,6 @@ export default function ForumClient({
                     })
                   }
                 />
-                {shouldShowLocationAtMetaEnd && (
-                  <ForumTopicLocationBadge
-                    className="ml-auto"
-                    location={topicLocation}
-                    size="compact"
-                    zone={topicZone}
-                  />
-                )}
               </div>
             </div>
           </div>
@@ -4976,10 +5013,12 @@ export default function ForumClient({
 
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#6a645c]">
           <span>{topicLabel}</span>
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-            <Eye size={15} strokeWidth={2.2} />
-            {metrics.views.toLocaleString()} vistas
-          </span>
+          {metrics.views > 0 && (
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+              <Eye size={15} strokeWidth={2.2} />
+              {metrics.views.toLocaleString()} vistas
+            </span>
+          )}
           <ForumMetricLikeButton
             compact
             metricKey={metricKey}
@@ -5051,14 +5090,18 @@ export default function ForumClient({
                             )}
                           </span>
                         )}
-                        <span className="inline-flex items-center gap-1">
-                          <Eye size={13} strokeWidth={2.2} />
-                          {topicMetrics.views.toLocaleString()} vistas
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <Heart size={13} strokeWidth={2.2} />
-                          {topicMetrics.likes.toLocaleString()} likes
-                        </span>
+                        {topicMetrics.views > 0 && (
+                          <span className="inline-flex items-center gap-1">
+                            <Eye size={13} strokeWidth={2.2} />
+                            {topicMetrics.views.toLocaleString()} vistas
+                          </span>
+                        )}
+                        {topicMetrics.likes > 0 && (
+                          <span className="inline-flex items-center gap-1">
+                            <Heart size={13} strokeWidth={2.2} />
+                            {topicMetrics.likes.toLocaleString()} likes
+                          </span>
+                        )}
                         <span>actualizado {formatForumDate(topic.last_post_at)}</span>
                         {topicLocation && !topicDateRange && (
                           <ForumTopicLocationPill
@@ -5362,10 +5405,12 @@ export default function ForumClient({
 
           {canShowPostMetrics && (
             <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#6a645c]">
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                <Eye size={15} strokeWidth={2.2} />
-                {metrics.views.toLocaleString()} vistas
-              </span>
+              {metrics.views > 0 && (
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                  <Eye size={15} strokeWidth={2.2} />
+                  {metrics.views.toLocaleString()} vistas
+                </span>
+              )}
               <ForumMetricLikeButton
                 compact
                 metricKey={metricKey}
@@ -5886,10 +5931,12 @@ export default function ForumClient({
                           )}
                         </span>
                       )}
-                      <span className="inline-flex items-center gap-1.5">
-                        <Eye size={15} strokeWidth={2.2} />
-                        {getTopicMetrics(currentTopic.id).views.toLocaleString()} vistas
-                      </span>
+                      {getTopicMetrics(currentTopic.id).views > 0 && (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Eye size={15} strokeWidth={2.2} />
+                          {getTopicMetrics(currentTopic.id).views.toLocaleString()} vistas
+                        </span>
+                      )}
                       <span>actualizado {formatForumDate(currentTopic.last_post_at)}</span>
                       <ForumMetricLikeButton
                         compact
@@ -6073,12 +6120,14 @@ export default function ForumClient({
                             )}
                           </span>
                         )}
-                        <span className="inline-flex items-center gap-1.5">
-                          <Eye size={15} strokeWidth={2.2} />
-                          {getCategoryOwnMetrics(
-                            currentCategory.id,
-                          ).views.toLocaleString()} vistas
-                        </span>
+                        {getCategoryOwnMetrics(currentCategory.id).views > 0 && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Eye size={15} strokeWidth={2.2} />
+                            {getCategoryOwnMetrics(
+                              currentCategory.id,
+                            ).views.toLocaleString()} vistas
+                          </span>
+                        )}
                         <ForumMetricLikeButton
                           compact
                           metricKey={getForumCategoryMetricKey(currentCategory.id)}
@@ -6265,16 +6314,22 @@ export default function ForumClient({
                               </>
                             )}
                           </p>
-                          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#6a645c]">
-                            <span className="inline-flex items-center gap-1">
-                              <Eye size={13} strokeWidth={2.2} />
-                              {metrics.views.toLocaleString()} vistas
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                              <Heart size={13} strokeWidth={2.2} />
-                              {metrics.likes.toLocaleString()} likes
-                            </span>
-                          </p>
+                          {(metrics.views > 0 || metrics.likes > 0) && (
+                            <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#6a645c]">
+                              {metrics.views > 0 && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Eye size={13} strokeWidth={2.2} />
+                                  {metrics.views.toLocaleString()} vistas
+                                </span>
+                              )}
+                              {metrics.likes > 0 && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Heart size={13} strokeWidth={2.2} />
+                                  {metrics.likes.toLocaleString()} likes
+                                </span>
+                              )}
+                            </p>
+                          )}
                         </Link>
 
                         {canManageCurrentCategory && (

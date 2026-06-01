@@ -656,6 +656,7 @@ function HomeForumPostPreviewLink({
   showCategory?: boolean;
 }) {
   const locationWithDate = Boolean(post.calendarDateRange);
+  const hasStats = post.replyCount > 0 || post.views > 0 || post.likes > 0;
 
   return (
     <Link
@@ -723,21 +724,23 @@ function HomeForumPostPreviewLink({
             <span className="min-w-0 truncate">{post.location}</span>
           </p>
         )}
-        <p
-          className={`flex flex-wrap gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c] ${
-            showTextPreview ? "mt-auto pt-2" : "mt-2"
-          }`}
-        >
-          {post.replyCount > 0 && (
-            <span>
-              {post.replyCount === 1
-                ? "1 respuesta"
-                : `${post.replyCount.toLocaleString()} respuestas`}
-            </span>
-          )}
-          <span>{post.views.toLocaleString()} vistas</span>
-          <span>{post.likes.toLocaleString()} likes</span>
-        </p>
+        {hasStats && (
+          <p
+            className={`flex flex-wrap gap-x-3 gap-y-1 text-[0.72rem] font-semibold text-[#6a645c] ${
+              showTextPreview ? "mt-auto pt-2" : "mt-2"
+            }`}
+          >
+            {post.replyCount > 0 && (
+              <span>
+                {post.replyCount === 1
+                  ? "1 respuesta"
+                  : `${post.replyCount.toLocaleString()} respuestas`}
+              </span>
+            )}
+            {post.views > 0 && <span>{post.views.toLocaleString()} vistas</span>}
+            {post.likes > 0 && <span>{post.likes.toLocaleString()} likes</span>}
+          </p>
+        )}
       </div>
 
       {post.calendarDateRange && (
@@ -860,9 +863,11 @@ function StoryMeta({
           <span>{formatPublicationDateTime(publishedAt)}</span>
         </span>
 
-        <span className={itemClassName}>
-          <span>{views.toLocaleString()} vistas</span>
-        </span>
+        {views > 0 && (
+          <span className={itemClassName}>
+            <span>{views.toLocaleString()} vistas</span>
+          </span>
+        )}
 
         {comments > 0 && (
           <span className={itemClassName}>

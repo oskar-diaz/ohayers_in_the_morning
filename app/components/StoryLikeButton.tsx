@@ -2,7 +2,11 @@
 
 import { startTransition, useState } from "react";
 
-import { getLikedPosts, useLikedPost, writeLikedPosts } from "@/app/components/likedPostsStore";
+import {
+  getLikedPosts,
+  useLikedPost,
+  writeLikedPosts,
+} from "@/app/components/likedPostsStore";
 
 type StoryLikeButtonProps = {
   slug: string;
