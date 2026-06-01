@@ -4,7 +4,7 @@ import Link from "next/link";
 import Weather from "./Weather";
 
 const TOKYO_TIMEZONE = "Asia/Tokyo";
-const TICKER_MESSAGE = "103 libros vendidos en Mayo, ¡muchas gracias a todos!";
+const TICKER_MESSAGE = "103 LIBROS VENDIDOS EN MAYO, ¡MUCHAS GRACIAS A TODOS!";
 const TICKER_IMAGE_URL = "https://ohayers.ikublog.com/smilies/ikugracias.gif";
 const TICKER_URL =
   "https://www.amazon.es/Afinando-sue%C3%B1o-ikulibro-Oskar-D%C3%ADaz-ebook/dp/B0GM93MYKH";

@@ -1410,7 +1410,7 @@ export default async function Home() {
             </h2>
             <p className="mt-6 max-w-2xl text-xl leading-8 text-[#4f4a43]">
               Autobiografía de mi nueva vida desde que llegué a Tokio hace 19
-              años- Casado y con dos hijos, trabajo de IT desde casa para una
+              años. Casado y con dos hijos, trabajo de IT desde casa para una
               empresa japonesa y me dedico a contar mi vida, por si te interesa.
               Si el libro no te emociona al menos una vez, me lo como con
               wasabi.
