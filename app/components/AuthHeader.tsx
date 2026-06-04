@@ -36,7 +36,6 @@ function getForumProfileUrl(userId: string) {
 export default function AuthHeader() {
   const pathname = usePathname();
   const [session, setSession] = useState<Session | null>(null);
-  const [isSigningOut, setIsSigningOut] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -65,21 +64,6 @@ export default function AuthHeader() {
     };
   }, []);
 
-  async function handleSignOut() {
-    if (isSigningOut) {
-      return;
-    }
-
-    setIsSigningOut(true);
-    const { error } = await supabase.auth.signOut();
-
-    if (!error) {
-      setSession(null);
-    }
-
-    setIsSigningOut(false);
-  }
-
   const isForumPath = pathname === "/forum" || pathname.startsWith("/forum/");
 
   if (isForumPath) {
@@ -98,11 +82,11 @@ export default function AuthHeader() {
   return (
     <header
       aria-label="Sesion"
-      className="fixed left-2 right-2 top-[calc(var(--site-ticker-height)+0.5rem)] z-[80] flex h-10 max-w-[420px] items-center justify-between gap-2 rounded-full border border-black/10 bg-[#fffdf8]/95 px-2 shadow-[0_10px_28px_rgba(17,17,17,0.14)] backdrop-blur sm:left-4 sm:right-auto sm:w-[min(420px,calc(100vw-2rem))]"
+      className="fixed left-2 top-[calc(var(--site-ticker-height)+0.5rem)] z-[80] inline-flex h-10 w-fit max-w-[calc(100vw-1rem)] items-center rounded-full border border-black/10 bg-[#fffdf8]/95 px-2 shadow-[0_10px_28px_rgba(17,17,17,0.14)] backdrop-blur sm:left-4 sm:max-w-[420px]"
     >
       <Link
         href={getForumProfileUrl(user.id)}
-        className="flex min-w-0 items-center gap-2 rounded-full pr-1 transition hover:bg-[#f5efe4] focus:outline-none focus:ring-2 focus:ring-[#111111]/20"
+        className="flex min-w-0 max-w-full items-center gap-2 rounded-full pr-1 transition hover:bg-[#f5efe4] focus:outline-none focus:ring-2 focus:ring-[#111111]/20"
         aria-label="Ver tu perfil"
       >
         {avatarUrl ? (
@@ -122,26 +106,6 @@ export default function AuthHeader() {
           {name}
         </span>
       </Link>
-
-      <div className="flex shrink-0 items-center gap-1.5">
-        {isForumPath && (
-          <Link
-            href="/forum/profile"
-            className="rounded-full border border-[#d6d1c8] bg-[#fffdf8] px-2.5 py-1.5 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-[#111111] transition hover:bg-white"
-          >
-            Perfil
-          </Link>
-        )}
-
-        <button
-          type="button"
-          onClick={handleSignOut}
-          disabled={isSigningOut}
-          className="rounded-full border border-[#111111] bg-[#111111] px-2.5 py-1.5 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-[#fffdf8] transition hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:opacity-55"
-        >
-          {isSigningOut ? "..." : "Salir"}
-        </button>
-      </div>
     </header>
   );
 }

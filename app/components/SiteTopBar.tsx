@@ -131,7 +131,7 @@ export default async function SiteTopBar() {
 
         <div className="relative mx-auto max-w-7xl px-3 py-2 text-sm sm:px-5 min-[770px]:pt-14 min-[770px]:pb-8">
           <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 min-[770px]:hidden">
-            <div className="min-w-0 w-[100px] rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-2 py-1.5 text-center shadow-[0_8px_20px_rgba(17,17,17,0.05)]">
+            <div className="min-w-0 w-[78px] rounded-xl border border-[#d6d1c8] bg-[#fffdf8] px-2 py-1.5 text-center shadow-[0_8px_20px_rgba(17,17,17,0.05)] min-[360px]:w-[84px] min-[390px]:w-[92px] sm:w-[100px]">
               <p className="truncate text-[0.56rem] font-black uppercase tracking-[0.12em] text-[#7a746b]">
                 {formatTokyoCompactDate()}
               </p>
@@ -146,13 +146,13 @@ export default async function SiteTopBar() {
                 alt="Ohayers in the Morning"
                 width={320}
                 height={72}
-                className="mx-auto h-auto w-full max-w-[88px] drop-shadow-[0_4px_12px_rgba(90,9,9,0.28)] transition hover:opacity-90 sm:max-w-[104px]"
+                className="mx-auto h-auto w-full max-w-[124px] drop-shadow-[0_4px_12px_rgba(90,9,9,0.28)] transition hover:opacity-90 min-[360px]:max-w-[136px] min-[390px]:max-w-[148px] sm:max-w-[168px]"
                 priority
               />
             </Link>
 
             <Weather
-              className="-mr-3 w-[100px] justify-self-end sm:-mr-5"
+              className="w-[78px] justify-self-end min-[360px]:w-[84px] min-[390px]:w-[92px] sm:w-[100px]"
               variant="compact"
             />
           </div>
