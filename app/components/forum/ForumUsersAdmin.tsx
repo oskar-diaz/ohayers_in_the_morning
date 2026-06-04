@@ -260,7 +260,7 @@ export default function ForumUsersAdmin() {
 
         {isAdmin && (
           <div className="rounded-full border border-[#d6d1c8] bg-[#fffdf8] px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#111111]">
-            {totalUsers.toLocaleString("es-ES")} usuarios
+            Mostrando {totalUsers.toLocaleString("es-ES")} usuarios
           </div>
         )}
       </div>

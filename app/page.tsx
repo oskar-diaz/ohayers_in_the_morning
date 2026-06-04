@@ -1353,9 +1353,13 @@ export default async function Home() {
                         className="object-cover transition duration-500 hover:scale-[1.03]"
                       />
                     ) : (
-                      <div className="flex h-full items-center justify-center text-sm font-black uppercase tracking-[0.18em] text-[#7a746b]">
-                        Ikublog
-                      </div>
+                      <Image
+                        src="/tosca.png"
+                        alt=""
+                        fill
+                        sizes="(min-width: 1280px) 25vw, (min-width: 768px) 50vw, 100vw"
+                        className="object-cover transition duration-500 hover:scale-[1.03]"
+                      />
                     )}
                   </div>
                 </a>

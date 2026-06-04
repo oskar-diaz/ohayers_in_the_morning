@@ -268,9 +268,13 @@ export default async function CategoryPage({
                         className="object-cover hover:scale-[1.02] transition duration-500"
                       />
                     ) : (
-                      <div className="flex h-full items-center justify-center text-sm uppercase tracking-[0.18em] text-[#7a746b]">
-                        Ikublog
-                      </div>
+                      <Image
+                        src="/tosca.png"
+                        alt=""
+                        fill
+                        sizes="(min-width: 768px) 50vw, 100vw"
+                        className="object-cover hover:scale-[1.02] transition duration-500"
+                      />
                     )}
                   </div>
                 </a>

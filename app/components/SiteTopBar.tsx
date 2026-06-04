@@ -4,9 +4,10 @@ import Link from "next/link";
 import Weather from "./Weather";
 
 const TOKYO_TIMEZONE = "Asia/Tokyo";
-const TICKER_MESSAGE = "MUCHO CUIDADO CON EL TIFÓN N6 QUE YA LO TENEMOS AQUÍ.";
+const TICKER_MESSAGE = "Nueva entrada en el blog dedicada a mi hijo";
 const TICKER_URL =
-  "https://ohayers.ikublog.com/forum/actualidad-mpswcx7t/se-viene-el-tifon-n-6-jangmi-mpswmty8";
+  "https://www.ikublog.com/busca-tu-la-respuesta/";
+const TICKER_LINK_LABEL = "Leer blog";
 
 type AnniversaryResponse = {
   anniv1?: string;
@@ -111,7 +112,7 @@ export default async function SiteTopBar() {
         href={TICKER_URL}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label={`${TICKER_MESSAGE} MAS INFORMACIÓN`}
+        aria-label={`${TICKER_MESSAGE} ${TICKER_LINK_LABEL}`}
         className="sticky top-0 z-[90] flex h-[var(--site-ticker-height)] items-center justify-center border-b border-[#ffaca1]/70 bg-[#111111] px-3 text-center text-[#fffdf8] shadow-[0_8px_24px_rgba(111,16,16,0.18)] transition hover:bg-[#2a2a2a]"
       >
         <span className="inline-flex max-w-7xl flex-wrap items-center justify-center gap-x-3 gap-y-0.5 leading-tight">
@@ -119,7 +120,7 @@ export default async function SiteTopBar() {
             {TICKER_MESSAGE}
           </span>
           <span className="text-[0.7rem] tracking-[0.04em] text-[#ffd84f] sm:text-[0.9rem] sm:tracking-[0.08em]">
-            MAS INFORMACIÓN
+            {TICKER_LINK_LABEL}
           </span>
         </span>
       </a>

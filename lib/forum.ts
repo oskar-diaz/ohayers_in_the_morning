@@ -100,6 +100,7 @@ const FORUM_SMILIE_ENTRIES = [
   ":mierdacas:",
   ":foreveralone:",
   ":perrete:",
+  ":osete:",
 ] as const;
 
 const FORUM_SMILIE_SOURCES: Record<string, string> = {
@@ -171,6 +172,7 @@ const FORUM_SMILIE_SOURCES: Record<string, string> = {
   ":nunchakero:": "/smilies/nunchakus.gif",
   ":ojetepalinvierno:": "/smilies/ojete.gif",
   ":olakease:": "/smilies/smiley-with-glasses23.gif",
+  ":osete:": "/smilies/emot-trashbear.gif",
   ":osleo:": "/smilies/aAx4PX5g_o.gif",
   ":ostiejas:": "/smilies/ostiejas.gif",
   ":otiaya:": "/smilies/mosqueao.gif",
