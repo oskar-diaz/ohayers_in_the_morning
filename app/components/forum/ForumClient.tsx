@@ -39,6 +39,7 @@ import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import {
   ChangeEvent,
   FormEvent,
+  MouseEvent as ReactMouseEvent,
   startTransition,
   useCallback,
   useEffect,
@@ -114,6 +115,11 @@ type ForumSearchResult = {
 type ForumTopicMetrics = {
   likes: number;
   views: number;
+};
+
+type ForumZoomImage = {
+  alt: string;
+  src: string;
 };
 
 type ForumTextAlign = "left" | "center" | "right";
@@ -1114,7 +1120,11 @@ function renderForumTextSegment(
   return output.replace(/\n/g, "<br />");
 }
 
-function sanitizeForumHtml(value: string, renderSmilies: boolean) {
+function sanitizeForumHtml(
+  value: string,
+  renderSmilies: boolean,
+  enableImageZoom = false,
+) {
   let output = "";
   let cursor = 0;
   let anchorDepth = 0;
@@ -1162,11 +1172,27 @@ function sanitizeForumHtml(value: string, renderSmilies: boolean) {
         ? ` title="${escapeForumAttribute(title)}"`
         : "";
 
-      output += `<img src="${escapeForumAttribute(
-        src,
-      )}" alt="${escapeForumAttribute(
-        alt,
-      )}"${titleAttribute} loading="lazy" class="my-4 max-h-[520px] w-auto max-w-full rounded-xl border border-[#d6d1c8] object-contain" />`;
+      if (enableImageZoom) {
+        const imageLabel = alt || title || "imagen del foro";
+
+        output += `<button type="button" data-forum-full-image-src="${escapeForumAttribute(
+          src,
+        )}" data-forum-full-image-alt="${escapeForumAttribute(
+          alt || title,
+        )}" aria-label="Ver imagen en tamaño original: ${escapeForumAttribute(
+          imageLabel,
+        )}" class="group relative my-4 block w-fit max-w-full cursor-zoom-in appearance-none overflow-hidden rounded-xl border border-[#d6d1c8] bg-transparent p-0 text-left shadow-none transition focus:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffdf8]"><img src="${escapeForumAttribute(
+          src,
+        )}" alt="${escapeForumAttribute(
+          alt,
+        )}"${titleAttribute} loading="lazy" class="block max-h-[520px] w-auto max-w-full object-contain transition duration-200 group-hover:brightness-[0.96]" /><span class="pointer-events-none absolute bottom-3 right-3 inline-flex rounded-full bg-[#111111]/85 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-white opacity-0 shadow-[0_10px_24px_rgba(17,17,17,0.18)] transition duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">Ver completa</span></button>`;
+      } else {
+        output += `<img src="${escapeForumAttribute(
+          src,
+        )}" alt="${escapeForumAttribute(
+          alt,
+        )}"${titleAttribute} loading="lazy" class="my-4 max-h-[520px] w-auto max-w-full rounded-xl border border-[#d6d1c8] object-contain" />`;
+      }
       continue;
     }
 
@@ -1222,7 +1248,7 @@ function sanitizeForumContentForStorage(value: string) {
 }
 
 function renderForumContentHtml(value: string) {
-  return sanitizeForumHtml(value, true);
+  return sanitizeForumHtml(value, true, true);
 }
 
 function getForumXStatusUrl(value: string) {
@@ -1367,6 +1393,57 @@ function getForumContentEmbedParts(value: string) {
 }
 
 function ForumPostContent({ content }: { content: string }) {
+  const [zoomedImage, setZoomedImage] = useState<ForumZoomImage | null>(null);
+
+  useEffect(() => {
+    if (!zoomedImage) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setZoomedImage(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [zoomedImage]);
+
+  const handleContentClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const imageButton = target?.closest<HTMLButtonElement>(
+        "[data-forum-full-image-src]",
+      );
+
+      if (!imageButton || !event.currentTarget.contains(imageButton)) {
+        return;
+      }
+
+      const src = imageButton.dataset.forumFullImageSrc;
+
+      if (!src) {
+        return;
+      }
+
+      event.preventDefault();
+      setZoomedImage({
+        alt: imageButton.dataset.forumFullImageAlt ?? "",
+        src,
+      });
+    },
+    [],
+  );
+
   return (
     <>
       {getForumContentEmbedParts(content).map((part, index) =>
@@ -1386,11 +1463,44 @@ function ForumPostContent({ content }: { content: string }) {
           <div
             key={`html-${index}`}
             className={FORUM_POST_CONTENT_CLASS_NAME}
+            onClick={handleContentClick}
             dangerouslySetInnerHTML={{
               __html: part.html,
             }}
           />
         ),
+      )}
+
+      {zoomedImage && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-[#111111]/92 p-4 backdrop-blur-sm md:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label={zoomedImage.alt || "Imagen del foro"}
+          onClick={() => setZoomedImage(null)}
+        >
+          <div
+            className="relative flex max-h-full w-full max-w-6xl flex-col items-center"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setZoomedImage(null)}
+              className="mb-4 inline-flex self-end rounded-full border border-white/20 bg-white/10 px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-white transition hover:bg-white/18"
+            >
+              Cerrar
+            </button>
+
+            <div className="overflow-hidden rounded-[1.6rem] bg-[#1a1a1a] shadow-[0_28px_80px_rgba(0,0,0,0.42)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={zoomedImage.src}
+                alt={zoomedImage.alt}
+                className="h-auto max-h-[78vh] w-auto max-w-full object-contain"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
