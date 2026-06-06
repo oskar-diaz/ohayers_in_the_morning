@@ -109,7 +109,7 @@ create table if not exists public.forum_posts (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint forum_posts_content_length check (
-    char_length(trim(content)) between 2 and 6000
+    char_length(trim(content)) between 2 and 50000
   )
 );
 

@@ -8,6 +8,7 @@ const TICKER_MESSAGE = "Desaparecido estudiante americano en Kioto";
 const TICKER_URL =
   "https://japantoday.com/category/national/american-college-student-missing-in-kyoto-last-seen-by-family-one-week-ago";
 const TICKER_LINK_LABEL = "Ver noticia";
+export const SITE_TICKER_IS_VISIBLE = false;
 
 type AnniversaryResponse = {
   anniv1?: string;
@@ -108,22 +109,24 @@ export default async function SiteTopBar() {
 
   return (
     <>
-      <a
-        href={TICKER_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={`${TICKER_MESSAGE} ${TICKER_LINK_LABEL}`}
-        className="sticky top-0 z-[90] flex h-[var(--site-ticker-height)] items-center justify-center border-b border-[#ffaca1]/70 bg-[#111111] px-3 text-center text-[#fffdf8] shadow-[0_8px_24px_rgba(111,16,16,0.18)] transition hover:bg-[#2a2a2a]"
-      >
-        <span className="inline-flex max-w-7xl flex-wrap items-center justify-center gap-x-3 gap-y-0.5 leading-tight">
-          <span className="text-[0.7rem] tracking-[0.04em] sm:text-[0.9rem] sm:tracking-[0.08em]">
-            {TICKER_MESSAGE}
+      {SITE_TICKER_IS_VISIBLE && (
+        <a
+          href={TICKER_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`${TICKER_MESSAGE} ${TICKER_LINK_LABEL}`}
+          className="sticky top-0 z-[90] flex h-[var(--site-ticker-height)] items-center justify-center border-b border-[#ffaca1]/70 bg-[#111111] px-3 text-center text-[#fffdf8] shadow-[0_8px_24px_rgba(111,16,16,0.18)] transition hover:bg-[#2a2a2a]"
+        >
+          <span className="inline-flex max-w-7xl flex-wrap items-center justify-center gap-x-3 gap-y-0.5 leading-tight">
+            <span className="text-[0.7rem] tracking-[0.04em] sm:text-[0.9rem] sm:tracking-[0.08em]">
+              {TICKER_MESSAGE}
+            </span>
+            <span className="text-[0.7rem] tracking-[0.04em] text-[#ffd84f] sm:text-[0.9rem] sm:tracking-[0.08em]">
+              {TICKER_LINK_LABEL}
+            </span>
           </span>
-          <span className="text-[0.7rem] tracking-[0.04em] text-[#ffd84f] sm:text-[0.9rem] sm:tracking-[0.08em]">
-            {TICKER_LINK_LABEL}
-          </span>
-        </span>
-      </a>
+        </a>
+      )}
 
       <div className="relative overflow-hidden border-b border-[#d93e3e] bg-[linear-gradient(135deg,#ff7167_0%,#ff5a58_30%,#ff4b4b_56%,#eb4050_78%,#cc3150_100%)] min-[770px]:overflow-visible">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,224,224,0.34),rgba(255,224,224,0)_34%),radial-gradient(circle_at_bottom_right,rgba(157,18,45,0.3),rgba(157,18,45,0)_42%)]" />

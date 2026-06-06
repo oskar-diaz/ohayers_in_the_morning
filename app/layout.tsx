@@ -11,7 +11,7 @@ import AdminNewsTipsNotice from "./components/AdminNewsTipsNotice";
 import AuthHeader from "./components/AuthHeader";
 import SiteFooter from "./components/SiteFooter";
 import SupabaseAuthReturn from "./components/SupabaseAuthReturn";
-import SiteTopBar from "./components/SiteTopBar";
+import SiteTopBar, { SITE_TICKER_IS_VISIBLE } from "./components/SiteTopBar";
 import {
   siteDescription,
   siteKeywords,
@@ -92,9 +92,16 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const siteTickerStyle = {
+    "--site-ticker-height": SITE_TICKER_IS_VISIBLE ? "3.5rem" : "0rem",
+  } as React.CSSProperties;
+
   return (
     <html lang="es">
-      <body className={`${playfair.variable} ${inter.variable}`}>
+      <body
+        className={`${playfair.variable} ${inter.variable}`}
+        style={siteTickerStyle}
+      >
         <SupabaseAuthReturn />
         <HideOnStudio>
           <AuthHeader />

@@ -18,6 +18,7 @@ import {
   Link as LinkIcon,
   List,
   ListOrdered,
+  LoaderCircle,
   MapPin,
   Pencil,
   Plus,
@@ -38,6 +39,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import {
   ChangeEvent,
+  DragEvent as ReactDragEvent,
   FormEvent,
   MouseEvent as ReactMouseEvent,
   startTransition,
@@ -794,6 +796,26 @@ function getSupabaseErrorCode(error: unknown) {
 
   return typeof code === "string" ? code : "";
 }
+
+function getSupabaseErrorMessage(error: unknown) {
+  if (!error || typeof error !== "object" || !("message" in error)) {
+    return "";
+  }
+
+  const message = (error as { message?: unknown }).message;
+
+  return typeof message === "string" ? message : "";
+}
+
+function isForumPostContentLengthError(error: unknown) {
+  return (
+    getSupabaseErrorCode(error) === "23514" &&
+    getSupabaseErrorMessage(error).includes("forum_posts_content_length")
+  );
+}
+
+const FORUM_POST_CONTENT_LENGTH_ERROR_MESSAGE =
+  "El post lleva mucho HTML de imágenes. Ejecuta la migración `supabase/forum_parts/13_post_content_length.sql` en Supabase y vuelve a publicar.";
 
 function getForumTagAttribute(tag: string, name: string) {
   const pattern = new RegExp(
@@ -2169,7 +2191,10 @@ function RichTextEditor({
   value: string;
 }) {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const imageDropDepthRef = useRef(0);
   const [imageUploadError, setImageUploadError] = useState("");
+  const [uploadingImageCount, setUploadingImageCount] = useState(0);
+  const [isImageDropActive, setIsImageDropActive] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isSmiliePickerOpen, setIsSmiliePickerOpen] = useState(false);
   const editor = useEditor(
@@ -2261,12 +2286,8 @@ function RichTextEditor({
     editor.chain().focus().extendMarkRange("link").setLink({ href: safeHref }).run();
   }
 
-  async function uploadImage(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-
-    event.target.value = "";
-
-    if (!file || !editor || isUploadingImage) {
+  async function uploadImages(files: File[]) {
+    if (files.length === 0 || !editor || isUploadingImage) {
       return;
     }
 
@@ -2275,61 +2296,150 @@ function RichTextEditor({
       return;
     }
 
-    if (!FORUM_IMAGE_MIME_TYPES.has(file.type)) {
-      setImageUploadError("Solo se permiten imágenes JPG, PNG, WebP o GIF.");
-      return;
-    }
+    const acceptedFiles = files.filter(
+      (file) =>
+        FORUM_IMAGE_MIME_TYPES.has(file.type) &&
+        file.size <= FORUM_IMAGE_MAX_BYTES,
+    );
+    const rejectedFileCount = files.length - acceptedFiles.length;
 
-    if (file.size > FORUM_IMAGE_MAX_BYTES) {
-      setImageUploadError("La imagen no puede pasar de 5 MB.");
+    if (acceptedFiles.length === 0) {
+      setImageUploadError(
+        "Solo se permiten imágenes JPG, PNG, WebP o GIF de hasta 5 MB.",
+      );
       return;
     }
 
     setImageUploadError("");
+    setUploadingImageCount(acceptedFiles.length);
     setIsUploadingImage(true);
 
+    const failedFiles: string[] = [];
+    const uploadedImageHtml: string[] = [];
+
     try {
-      const imagePath = getForumImagePath(uploadOwnerId, file);
-      const { error } = await supabase.storage
-        .from(FORUM_IMAGE_BUCKET)
-        .upload(imagePath, file, {
-          cacheControl: "31536000",
-          upsert: false,
-        });
+      for (const file of acceptedFiles) {
+        try {
+          const imagePath = getForumImagePath(uploadOwnerId, file);
+          const { error } = await supabase.storage
+            .from(FORUM_IMAGE_BUCKET)
+            .upload(imagePath, file, {
+              cacheControl: "31536000",
+              upsert: false,
+            });
 
-      if (error) {
-        throw error;
+          if (error) {
+            throw error;
+          }
+
+          const { data } = supabase.storage
+            .from(FORUM_IMAGE_BUCKET)
+            .getPublicUrl(imagePath);
+
+          if (!data.publicUrl) {
+            throw new Error("forum_image_public_url_missing");
+          }
+
+          const imageAlt = file.name.replace(/\.[^.]+$/, "").slice(0, 120);
+
+          uploadedImageHtml.push(
+            `<img src="${escapeForumAttribute(
+              data.publicUrl,
+            )}" alt="${escapeForumAttribute(
+              imageAlt,
+            )}" title="${escapeForumAttribute(imageAlt)}" />`,
+          );
+        } catch (error) {
+          failedFiles.push(file.name);
+          console.error("Failed to upload forum image", error);
+        }
       }
 
-      const { data } = supabase.storage
-        .from(FORUM_IMAGE_BUCKET)
-        .getPublicUrl(imagePath);
-
-      if (!data.publicUrl) {
-        throw new Error("forum_image_public_url_missing");
+      if (uploadedImageHtml.length > 0) {
+        editor.chain().focus().insertContent(uploadedImageHtml.join("")).run();
       }
 
-      const imageAlt = file.name.replace(/\.[^.]+$/, "").slice(0, 120);
+      const uploadMessages: string[] = [];
 
-      editor
-        .chain()
-        .focus()
-        .insertContent(
-          `<img src="${escapeForumAttribute(
-            data.publicUrl,
-          )}" alt="${escapeForumAttribute(
-            imageAlt,
-          )}" title="${escapeForumAttribute(imageAlt)}" />`,
-        )
-        .run();
-    } catch (error) {
-      console.error("Failed to upload forum image", error);
-      setImageUploadError(
-        "No he podido subir la imagen. Revisa el bucket forum-images en Supabase.",
-      );
+      if (rejectedFileCount > 0) {
+        uploadMessages.push(
+          rejectedFileCount === 1
+            ? "Un archivo no se ha subido: solo imágenes JPG, PNG, WebP o GIF de hasta 5 MB."
+            : `${rejectedFileCount} archivos no se han subido: solo imágenes JPG, PNG, WebP o GIF de hasta 5 MB.`,
+        );
+      }
+
+      if (failedFiles.length > 0) {
+        uploadMessages.push(
+          failedFiles.length === 1
+            ? "No he podido subir una imagen. Revisa el bucket forum-images en Supabase."
+            : `No he podido subir ${failedFiles.length} imágenes. Revisa el bucket forum-images en Supabase.`,
+        );
+      }
+
+      setImageUploadError(uploadMessages.join(" "));
     } finally {
       setIsUploadingImage(false);
+      setUploadingImageCount(0);
     }
+  }
+
+  function uploadImage(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+
+    event.target.value = "";
+    void uploadImages(files);
+  }
+
+  function hasDraggedFiles(event: ReactDragEvent<HTMLDivElement>) {
+    return Array.from(event.dataTransfer.types).includes("Files");
+  }
+
+  function handleImageDragEnter(event: ReactDragEvent<HTMLDivElement>) {
+    if (!hasDraggedFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    imageDropDepthRef.current += 1;
+    setIsImageDropActive(true);
+  }
+
+  function handleImageDragOver(event: ReactDragEvent<HTMLDivElement>) {
+    if (!hasDraggedFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = isUploadingImage ? "none" : "copy";
+  }
+
+  function handleImageDragLeave(event: ReactDragEvent<HTMLDivElement>) {
+    if (!hasDraggedFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    imageDropDepthRef.current = Math.max(0, imageDropDepthRef.current - 1);
+
+    if (imageDropDepthRef.current === 0) {
+      setIsImageDropActive(false);
+    }
+  }
+
+  function handleImageDrop(event: ReactDragEvent<HTMLDivElement>) {
+    if (!hasDraggedFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    imageDropDepthRef.current = 0;
+    setIsImageDropActive(false);
+    void uploadImages(Array.from(event.dataTransfer.files));
   }
 
   function insertPlainText(valueToInsert: string) {
@@ -2360,6 +2470,10 @@ function RichTextEditor({
     "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d6d1c8] bg-[#fffdf8] text-[#111111] transition hover:bg-[#f5efe4] disabled:cursor-not-allowed disabled:opacity-40";
   const activeToolbarButtonClassName =
     "border-red-700 bg-[#fff3ed] text-red-700 shadow-[inset_0_0_0_1px_rgba(185,28,28,0.25)] hover:bg-[#ffe7dc]";
+  const imageUploadStatusLabel =
+    uploadingImageCount > 1
+      ? `Subiendo ${uploadingImageCount} imágenes...`
+      : "Subiendo imagen...";
 
   return (
     <div className="space-y-3">
@@ -2428,6 +2542,7 @@ function RichTextEditor({
           ref={imageInputRef}
           type="file"
           accept="image/gif,image/jpeg,image/png,image/webp"
+          multiple
           className="hidden"
           onChange={uploadImage}
         />
@@ -2448,7 +2563,7 @@ function RichTextEditor({
           aria-expanded={isSmiliePickerOpen}
           disabled={!editor}
           onClick={() => setIsSmiliePickerOpen((currentValue) => !currentValue)}
-          className={`${toolbarButtonClassName} ${
+          className={`${toolbarButtonClassName} md:hidden ${
             isSmiliePickerOpen ? activeToolbarButtonClassName : ""
           }`}
         >
@@ -2554,7 +2669,7 @@ function RichTextEditor({
       </div>
 
       {isSmiliePickerOpen && (
-        <div className="max-h-40 overflow-y-auto rounded-[1rem] border border-[#d6d1c8] bg-[#fffdf8] p-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.4)] sm:max-h-52">
+        <div className="max-h-40 overflow-y-auto rounded-[1rem] border border-[#d6d1c8] bg-[#fffdf8] p-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.4)] md:hidden">
           <SmilieBar
             onPick={(smilie) => {
               insertPlainText(smilie);
@@ -2565,17 +2680,49 @@ function RichTextEditor({
       )}
 
       <div
-        className="editorial-field min-h-[190px] cursor-text overflow-auto text-[1rem] leading-7 [&_.ProseMirror]:min-h-[160px] [&_.ProseMirror]:outline-none [&_.ProseMirror_a]:font-bold [&_.ProseMirror_a]:text-red-700 [&_.ProseMirror_a]:underline [&_.ProseMirror_blockquote]:my-4 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-[#d6d1c8] [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_blockquote]:text-[0.9rem] [&_.ProseMirror_blockquote]:leading-6 [&_.ProseMirror_img]:my-4 [&_.ProseMirror_img]:max-h-[380px] [&_.ProseMirror_img]:w-auto [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:rounded-xl [&_.ProseMirror_img]:border [&_.ProseMirror_img]:border-[#d6d1c8] [&_.ProseMirror_img]:object-contain [&_.ProseMirror_li]:ml-5 [&_.ProseMirror_ol]:my-3 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left [&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0 [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-[#8b8379] [&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.ProseMirror_p]:mb-3 [&_.ProseMirror_ul]:my-3 [&_.ProseMirror_ul]:list-disc"
+        className={`editorial-field relative min-h-[190px] cursor-text overflow-auto text-[1rem] leading-7 transition [&_.ProseMirror]:min-h-[160px] [&_.ProseMirror]:outline-none [&_.ProseMirror_a]:font-bold [&_.ProseMirror_a]:text-red-700 [&_.ProseMirror_a]:underline [&_.ProseMirror_blockquote]:my-4 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-[#d6d1c8] [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_blockquote]:text-[0.9rem] [&_.ProseMirror_blockquote]:leading-6 [&_.ProseMirror_img]:my-4 [&_.ProseMirror_img]:max-h-[380px] [&_.ProseMirror_img]:w-auto [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:rounded-xl [&_.ProseMirror_img]:border [&_.ProseMirror_img]:border-[#d6d1c8] [&_.ProseMirror_img]:object-contain [&_.ProseMirror_li]:ml-5 [&_.ProseMirror_ol]:my-3 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left [&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0 [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-[#8b8379] [&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.ProseMirror_p]:mb-3 [&_.ProseMirror_ul]:my-3 [&_.ProseMirror_ul]:list-disc ${
+          isImageDropActive
+            ? "border-red-700 bg-[#fff3ed] ring-2 ring-red-200"
+            : ""
+        }`}
         onClick={() => editor?.chain().focus().run()}
+        onDragEnterCapture={handleImageDragEnter}
+        onDragLeaveCapture={handleImageDragLeave}
+        onDragOverCapture={handleImageDragOver}
+        onDropCapture={handleImageDrop}
       >
+        {isImageDropActive && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[1.5rem] border border-red-700/50 bg-[#fffdf8]/82 text-[0.72rem] font-black uppercase tracking-[0.14em] text-red-700 backdrop-blur-sm">
+            Suelta las imágenes
+          </div>
+        )}
         <EditorContent
           editor={editor}
         />
+        {isUploadingImage && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="pointer-events-none absolute bottom-3 right-3 z-20 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full border border-red-200 bg-[#fffdf8]/95 px-3 py-2 text-[0.72rem] font-black uppercase tracking-[0.12em] text-red-700 shadow-[0_12px_26px_rgba(17,17,17,0.16)] backdrop-blur"
+          >
+            <LoaderCircle
+              size={15}
+              strokeWidth={2.5}
+              className="shrink-0 animate-spin"
+              aria-hidden="true"
+            />
+            <span className="truncate">{imageUploadStatusLabel}</span>
+          </div>
+        )}
       </div>
 
-      {(isUploadingImage || imageUploadError) && (
+      <div className="hidden max-h-52 overflow-y-auto rounded-[1rem] border border-[#d6d1c8] bg-[#fffdf8] p-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.4)] md:block">
+        <SmilieBar onPick={insertPlainText} />
+      </div>
+
+      {imageUploadError && (
         <p className="text-sm text-[#6a645c]">
-          {isUploadingImage ? "Subiendo imagen..." : imageUploadError}
+          {imageUploadError}
         </p>
       )}
     </div>
@@ -3800,7 +3947,11 @@ export default function ForumClient({
       router.push(`/forum/${category.slug}/${topic.slug}`);
     } catch (error) {
       console.error("Failed to create forum topic", error);
-      setErrorMessage("No he podido crear el post.");
+      setErrorMessage(
+        isForumPostContentLengthError(error)
+          ? FORUM_POST_CONTENT_LENGTH_ERROR_MESSAGE
+          : "No he podido crear el post.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -4050,7 +4201,11 @@ export default function ForumClient({
       await loadForumData();
     } catch (error) {
       console.error("Failed to post forum reply", error);
-      setErrorMessage("No he podido publicar la respuesta.");
+      setErrorMessage(
+        isForumPostContentLengthError(error)
+          ? FORUM_POST_CONTENT_LENGTH_ERROR_MESSAGE
+          : "No he podido publicar la respuesta.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -4551,7 +4706,11 @@ export default function ForumClient({
       await loadForumData();
     } catch (error) {
       console.error("Failed to edit forum post", error);
-      setErrorMessage("No he podido guardar los cambios.");
+      setErrorMessage(
+        isForumPostContentLengthError(error)
+          ? FORUM_POST_CONTENT_LENGTH_ERROR_MESSAGE
+          : "No he podido guardar los cambios.",
+      );
     } finally {
       setActiveAction("");
     }
