@@ -4,10 +4,10 @@ import Link from "next/link";
 import Weather from "./Weather";
 
 const TOKYO_TIMEZONE = "Asia/Tokyo";
-const TICKER_MESSAGE = "Nueva entrada en el blog dedicada a mi hijo";
+const TICKER_MESSAGE = "Desaparecido estudiante americano en Kioto";
 const TICKER_URL =
-  "https://www.ikublog.com/busca-tu-la-respuesta/";
-const TICKER_LINK_LABEL = "Leer blog";
+  "https://japantoday.com/category/national/american-college-student-missing-in-kyoto-last-seen-by-family-one-week-ago";
+const TICKER_LINK_LABEL = "Ver noticia";
 
 type AnniversaryResponse = {
   anniv1?: string;
