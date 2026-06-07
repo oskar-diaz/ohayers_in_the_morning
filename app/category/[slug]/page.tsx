@@ -22,10 +22,14 @@ import { getViewsBySlug } from "@/lib/views";
 import {
   blogCategory,
   getWordpressCategoryMetadata,
+  getWordpressPostPage,
   getWordpressPosts,
+  WORDPRESS_POSTS_PER_PAGE,
 } from "@/lib/wordpress";
 import { client } from "@/sanity/lib/client";
 import { urlFor } from "@/sanity/lib/image";
+
+import { WordpressPostsGrid } from "./WordpressPostsGrid";
 
 export const revalidate = 60;
 
@@ -187,7 +191,11 @@ export default async function CategoryPage({
   const { slug } = await params;
 
   if (slug === blogCategory.slug) {
-    const posts = await getWordpressPosts();
+    const wordpressPage = await getWordpressPostPage({
+      page: 1,
+      perPage: WORDPRESS_POSTS_PER_PAGE,
+    });
+    const posts = wordpressPage.posts;
     const categoryUrl = absoluteUrl(`/category/${slug}`);
     const categoryJsonLd = {
       "@context": "https://schema.org",
@@ -218,8 +226,8 @@ export default async function CategoryPage({
           mainEntity: {
             "@type": "ItemList",
             itemListOrder: "https://schema.org/ItemListOrderDescending",
-            numberOfItems: posts.length,
-            itemListElement: posts.slice(0, 24).map((post, index) => ({
+            numberOfItems: wordpressPage.total || posts.length,
+            itemListElement: posts.map((post, index) => ({
               "@type": "ListItem",
               position: index + 1,
               url: post.url,
@@ -253,65 +261,13 @@ export default async function CategoryPage({
           </p>
         </div>
 
-        <section className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-2 gap-10">
-          {posts.length > 0 ? (
-            posts.map((post) => (
-              <article key={post.id} className="border-b newspaper-border pb-10">
-                <a href={post.url} target="_blank" rel="noopener noreferrer">
-                  <div className="relative aspect-[16/10] overflow-hidden mb-5 bg-[#ece8df]">
-                    {post.imageUrl ? (
-                      <Image
-                        src={post.imageUrl}
-                        alt=""
-                        fill
-                        sizes="(min-width: 768px) 50vw, 100vw"
-                        className="object-cover hover:scale-[1.02] transition duration-500"
-                      />
-                    ) : (
-                      <Image
-                        src="/tosca.png"
-                        alt=""
-                        fill
-                        sizes="(min-width: 768px) 50vw, 100vw"
-                        className="object-cover hover:scale-[1.02] transition duration-500"
-                      />
-                    )}
-                  </div>
-                </a>
-
-                <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold uppercase tracking-wide text-red-700">
-                  <p>{blogCategory.title}</p>
-                </div>
-
-                <a href={post.url} target="_blank" rel="noopener noreferrer">
-                  <h2
-                    className="newspaper-title text-[clamp(2rem,3vw,3rem)] font-black leading-[0.95] hover:opacity-70 transition"
-                    dangerouslySetInnerHTML={{ __html: post.titleHtml }}
-                  />
-                </a>
-
-                <p className="text-gray-500 text-xs mt-6">
-                  {formatPublicationDateTime(post.publishedAt)}
-                </p>
-
-                <div
-                  className="mt-4 text-gray-700 leading-relaxed text-lg [&_a]:hidden"
-                  dangerouslySetInnerHTML={{ __html: post.excerptHtml }}
-                />
-              </article>
-            ))
-          ) : (
-            <div className="md:col-span-2 rounded-2xl border border-[#d6d1c8] bg-[#fffdf8] p-8 text-center shadow-[0_10px_26px_rgba(17,17,17,0.05)]">
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-red-700">
-                Blog temporalmente no disponible
-              </p>
-              <p className="mt-4 text-base leading-relaxed text-[#4f4a43]">
-                No hemos podido cargar los posts de WordPress ahora mismo. Intenta
-                recargar dentro de un momento.
-              </p>
-            </div>
-          )}
-        </section>
+        <WordpressPostsGrid
+          categoryTitle={blogCategory.title}
+          initialHasMore={wordpressPage.hasMore}
+          initialPage={wordpressPage.page}
+          initialPosts={posts}
+          perPage={wordpressPage.perPage}
+        />
       </main>
     );
   }

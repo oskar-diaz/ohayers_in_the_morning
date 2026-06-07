@@ -11,6 +11,20 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "images.ikublog.com",
       },
+      {
+        protocol: "https",
+        hostname: "www.ikublog.com",
+        pathname: "/wp-content/uploads/**",
+      },
+      {
+        protocol: "https",
+        hostname: "pbs.twimg.com",
+        pathname: "/media/**",
+      },
+      {
+        protocol: "https",
+        hostname: "live.staticflickr.com",
+      },
     ],
   },
 };
