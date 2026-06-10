@@ -742,6 +742,25 @@ function isForumTopicUnread(
   return getForumTopicTime(readValue) < getForumTopicTime(getForumTopicReadValue(topic));
 }
 
+function getForumTopicUnreadLabel(
+  topic: ForumTopic,
+  readMarkers: Record<string, string>,
+) {
+  const readValue = readMarkers[String(topic.id)];
+
+  if (!isForumTopicUnread(topic, readMarkers)) {
+    return null;
+  }
+
+  if (!readValue) {
+    return "NUEVO POST";
+  }
+
+  return getForumTopicTime(readValue) >= getForumTopicTime(topic.created_at)
+    ? "NUEVA RESPUESTA"
+    : "NUEVO POST";
+}
+
 function getPlainExcerpt(value: string) {
   return getForumContentText(value).replace(/\s+/g, " ").trim().slice(0, 220);
 }
@@ -4774,7 +4793,8 @@ export default function ForumClient({
     const shouldShowLocationWithDate = Boolean(
       topicDateRange && (topicLocation || topicZone) && !shouldShowLocationAtMetaEnd,
     );
-    const isUnreadTopic = isForumTopicUnread(topic, forumTopicReadMarkers);
+    const unreadTopicLabel = getForumTopicUnreadLabel(topic, forumTopicReadMarkers);
+    const isUnreadTopic = Boolean(unreadTopicLabel);
     const hasTopicReplies = topic.reply_count > 0;
     const shouldReserveRightRail = hasTopicReplies || shouldShowLocationAtMetaEnd;
     const shouldShowTopicMetaRow =
@@ -4858,9 +4878,9 @@ export default function ForumClient({
                   {options?.showCategory && category && (
                     <span>{category.title}</span>
                   )}
-                  {isUnreadTopic && (
+                  {unreadTopicLabel && (
                     <span className="rounded-full border border-red-200 bg-white px-2 py-1 leading-none text-red-700">
-                      Nuevo
+                      {unreadTopicLabel}
                     </span>
                   )}
                   {topic.is_pinned && <span>Fijado</span>}
