@@ -4,9 +4,10 @@ import Link from "next/link";
 import Weather from "./Weather";
 
 const TOKYO_TIMEZONE = "Asia/Tokyo";
-const TICKER_MESSAGE = "NUEVO VÍDEO DESTACADO, ATONTAOS JAPONESES EN JAPÓN";
+const TICKER_MESSAGE =
+  "EN JAPÓN LAS EMPRESAS NOS OBLIGAN A ENGAÑAR A NUESTRAS PAREJAS";
 const TICKER_URL =
-  "https://www.instagram.com/p/DZT4CJbSGGH/";
+  "https://www.instagram.com/p/DZbend9ySQI/";
 const TICKER_LINK_LABEL = "VER VIDEO";
 export const SITE_TICKER_IS_VISIBLE = true;
 
