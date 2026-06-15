@@ -66,8 +66,6 @@ const TENTH_FEATURED_VIDEO_URL =
   "https://x.com/douga111www/status/2058171976703934905";
 const ELEVENTH_FEATURED_VIDEO_URL =
   "https://x.com/masanews3/status/2057980095676252187";
-const TWELFTH_FEATURED_VIDEO_URL =
-  "https://x.com/5chmatme/status/2058162044264681637";
 const THIRTEENTH_FEATURED_VIDEO_URL =
   "https://x.com/seisaku_tyosaku/status/2058336725374832771";
 const FOURTEENTH_FEATURED_VIDEO_URL =
@@ -76,8 +74,6 @@ const FIFTEENTH_FEATURED_VIDEO_URL =
   "https://x.com/douga111www/status/2059851363778257091";
 const SIXTEENTH_FEATURED_VIDEO_URL =
   "https://x.com/asuka_481/status/2059534377147945398";
-const SEVENTEENTH_FEATURED_VIDEO_URL =
-  "https://x.com/Ryo_Saeba_3/status/2059935071260578121";
 
 type HomeImage = SanityImageSource & {
   alt?: string;
@@ -1447,22 +1443,6 @@ export default async function Home() {
       </section>
 
       <section className="max-w-7xl mx-auto px-6 py-14 border-t newspaper-border">
-        <h2 className="newspaper-title text-[clamp(2.4rem,5vw,4.6rem)] font-black leading-[0.92] tracking-[-0.045em]">
-          La tienduqui
-        </h2>
-        <iframe
-          style={{ borderRadius: 24, border: "none" }}
-          src="https://embed.creator-spring.com/widget?slug=my-store-10bbce4&per=30&currency=EUR&page=1&layout=carousel-wide&theme=light"
-          title="La tienduqui"
-          width="100%"
-          height="420"
-          loading="lazy"
-          className="mt-8 block h-[420px] w-full"
-          data-reactroot=""
-        />
-      </section>
-
-      <section className="max-w-7xl mx-auto px-6 py-14 border-t newspaper-border">
         <p className="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-red-700">
           Las chorradas de twitter
         </p>
@@ -1470,10 +1450,6 @@ export default async function Home() {
         <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3 xl:items-start">
           <XEmbed
             url={SIXTEENTH_FEATURED_VIDEO_URL}
-            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
-          />
-          <XEmbed
-            url={SEVENTEENTH_FEATURED_VIDEO_URL}
             className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
           />
           <XEmbed
@@ -1522,10 +1498,6 @@ export default async function Home() {
           />
           <XEmbed
             url={ELEVENTH_FEATURED_VIDEO_URL}
-            className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
-          />
-          <XEmbed
-            url={TWELFTH_FEATURED_VIDEO_URL}
             className="[&_iframe]:mx-auto [&_iframe]:max-w-full"
           />
           <XEmbed
