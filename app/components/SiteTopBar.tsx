@@ -9,7 +9,7 @@ const TICKER_MESSAGE =
 const TICKER_URL =
   "https://www.instagram.com/p/DZbend9ySQI/";
 const TICKER_LINK_LABEL = "VER VIDEO";
-export const SITE_TICKER_IS_VISIBLE = true;
+export const SITE_TICKER_IS_VISIBLE = false;
 
 type AnniversaryResponse = {
   anniv1?: string;

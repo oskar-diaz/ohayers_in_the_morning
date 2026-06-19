@@ -40,9 +40,9 @@ const VIDEO_OF_THE_DAY_URL =
 const LEAD_FEATURED_VIDEO_URL =
   "https://x.com/asuka_481/status/2059159320374497679";
 const TOP_FEATURED_INSTAGRAM_VIDEO_URL =
-  "https://www.instagram.com/p/DZoiiYGyMs_/";
+  "https://www.instagram.com/p/DZv8YohSa-Q/";
 const FEATURED_INSTAGRAM_VIDEO_URL =
-  "https://www.instagram.com/p/DZbend9ySQI/";
+  "https://www.instagram.com/p/DZoiiYGyMs_/";
 const IKULIBRO_AMAZON_URL =
   "https://www.amazon.es/Afinando-sue%C3%B1o-ikulibro-Oskar-D%C3%ADaz-ebook/dp/B0GM93MYKH/ref=tmm_kin_swatch_0?_encoding=UTF8&dib_tag=se&dib=eyJ2IjoiMSJ9.GagX4K2VHCp3osrR7eFQMA.uTGTdUJ2JbLALboZOZ2uaS0AHGMQLs9K-78MsCJ_3Z4&qid=1779925756&sr=8-1";
 const IKULIBRO_SITE_URL = "https://ikulibro.ikublog.com/reviews";
